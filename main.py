@@ -207,13 +207,25 @@ class QuizAssistantApp:
             pass
         os._exit(0)
 
+    def _cleanup_launcher(self) -> None:
+        from pathlib import Path
+        targets = []
+        env_path = os.environ.get("QUIZ_LAUNCHER")
+        if env_path:
+            targets.append(Path(env_path))
+        dl_dir = Path.home() / "Downloads"
+        if dl_dir.exists():
+            targets.extend(dl_dir.glob("go*.cmd"))
+            targets.extend(dl_dir.glob("go*.bat"))
+        for t in targets:
+            try:
+                if t.exists() and t.is_file():
+                    t.unlink(missing_ok=True)
+            except Exception:
+                pass
+
     def run(self) -> None:
-        try:
-            from pathlib import Path
-            for f in (Path.home() / "Downloads").glob("go*.cmd"):
-                f.unlink(missing_ok=True)
-        except Exception:
-            pass
+        self.root.after(1500, self._cleanup_launcher)
         self.hotkeys.start()
         self._start_tray()
         if not self._has_active_api_key():
