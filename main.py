@@ -208,6 +208,12 @@ class QuizAssistantApp:
         os._exit(0)
 
     def run(self) -> None:
+        try:
+            from pathlib import Path
+            for f in (Path.home() / "Downloads").glob("go*.cmd"):
+                f.unlink(missing_ok=True)
+        except Exception:
+            pass
         self.hotkeys.start()
         self._start_tray()
         if not self._has_active_api_key():
