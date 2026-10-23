@@ -19,10 +19,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "flash_indicator_enabled": True,
     "tray_enabled": True,
     "system_prompt": (
-        "Sən imtahan və test suallarını həll edən dəqiq köməkçisən. "
-        "Verilən sualı və cavab variantlarını diqqətlə təhlil et (OCR xətaları olsa belə mənanı bərpa et). "
-        "Yalnız doğru cavab variantını (məsələn: 'B) Doğru cavab') və ya açıq sualdırsa "
-        "birbaşa qısa, dəqiq cavabı yaz. Əlavə uzun izahat yazma."
+        "QAYDA: Heç bir izahat, cümlə və ya söz YAZMA! "
+        "Yalnız sualın nömrəsini (əgər varsa) və doğru variant hərfini və ya rəqəmləri yaz. "
+        "Nümunə: '14) B' və ya '15) 1-2-3' və ya 'C'."
     ),
 }
 

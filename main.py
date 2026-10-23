@@ -28,13 +28,6 @@ def create_tray_icon_image() -> Image.Image:
     return img
 
 
-def _short_preview(text: str, max_len: int = 38) -> str:
-    clean = " ".join((text or "").split())
-    if len(clean) > max_len:
-        return clean[:max_len] + "..."
-    return clean
-
-
 class QuizAssistantApp:
     def __init__(self) -> None:
         enable_dpi_awareness()
@@ -83,7 +76,7 @@ class QuizAssistantApp:
             self._req_counter += 1
             return self._req_counter
 
-    def _solve_png_bytes_async(self, req_id: int, png_bytes: bytes, label: str = "Skrinşot") -> None:
+    def _solve_png_bytes_async(self, req_id: int, png_bytes: bytes) -> None:
         def worker() -> None:
             try:
                 prov = (self.config.get("provider") or "free").lower()
@@ -91,48 +84,45 @@ class QuizAssistantApp:
                     ocr_text = extract_text_from_image_bytes(png_bytes)
                     if not ocr_text or len(ocr_text.strip()) < 2:
                         if req_id == self._req_counter:
-                            self.overlay.set_error(f"[#{req_id}] Şəkildə mətn tapılmadı")
+                            self.overlay.set_error("Oxunmadı")
                         return
-                    preview = _short_preview(ocr_text)
-                    if req_id == self._req_counter:
-                        self.overlay.set_loading(f"[#{req_id}] Şəkildən həll edilir: {preview}")
                     ans = solve_text(ocr_text, self.config)
                     if req_id == self._req_counter:
-                        self.overlay.set_answer(f"[#{req_id}] {ans}  ({preview})")
+                        self.overlay.set_answer(ans)
                 else:
                     ans = solve_image(png_bytes, self.config)
                     if req_id == self._req_counter:
-                        self.overlay.set_answer(f"[#{req_id}] {ans}")
+                        self.overlay.set_answer(ans)
             except AIClientError as e:
                 if req_id == self._req_counter:
-                    self.overlay.set_error(f"[#{req_id}] {e}")
+                    self.overlay.set_error(str(e))
             except Exception as e:
                 if req_id == self._req_counter:
-                    self.overlay.set_error(f"[#{req_id}] Xəta: {str(e)[:60]}")
+                    self.overlay.set_error(f"Xəta: {str(e)[:40]}")
 
         threading.Thread(target=worker, daemon=True).start()
 
     def handle_region_capture(self, x1: int, y1: int, x2: int, y2: int) -> None:
         req_id = self._next_request_id()
         self.overlay.flash_capture(x2, y2)
-        self.overlay.set_loading(f"[#{req_id}] Skrinşot oxunur...")
+        self.overlay.set_loading("...")
 
         png_bytes = capture_region_png(x1, y1, x2, y2)
         if not png_bytes:
-            self.overlay.set_error(f"[#{req_id}] Sahə çox kiçikdir, sualı tam əhatə edin")
+            self.overlay.set_error("Kiçik sahə")
             return
-        self._solve_png_bytes_async(req_id, png_bytes, "Sahə")
+        self._solve_png_bytes_async(req_id, png_bytes)
 
     def handle_fullscreen_capture(self, cx: int, cy: int) -> None:
         req_id = self._next_request_id()
         self.overlay.flash_capture(cx, cy)
-        self.overlay.set_loading(f"[#{req_id}] Tam ekran skrinşotu oxunur...")
+        self.overlay.set_loading("...")
 
         png_bytes = capture_fullscreen_png()
         if not png_bytes:
-            self.overlay.set_error(f"[#{req_id}] Ekran şəkli çəkilə bilmədi")
+            self.overlay.set_error("Ekran xətası")
             return
-        self._solve_png_bytes_async(req_id, png_bytes, "Ekran")
+        self._solve_png_bytes_async(req_id, png_bytes)
 
     def handle_clipboard_capture(
         self,
@@ -161,21 +151,20 @@ class QuizAssistantApp:
             pass
 
         req_id = self._next_request_id()
-        preview = _short_preview(text)
         self.overlay.flash_capture(cx, cy)
-        self.overlay.set_loading(f"[#{req_id}] Mətn həll edilir: {preview}")
+        self.overlay.set_loading("...")
 
         def worker() -> None:
             try:
                 ans = solve_text(text, self.config)
                 if req_id == self._req_counter:
-                    self.overlay.set_answer(f"[#{req_id}] {ans}  ({preview})")
+                    self.overlay.set_answer(ans)
             except AIClientError as e:
                 if req_id == self._req_counter:
-                    self.overlay.set_error(f"[#{req_id}] {e}")
+                    self.overlay.set_error(str(e))
             except Exception as e:
                 if req_id == self._req_counter:
-                    self.overlay.set_error(f"[#{req_id}] Xəta: {str(e)[:60]}")
+                    self.overlay.set_error(f"Xəta: {str(e)[:40]}")
 
         threading.Thread(target=worker, daemon=True).start()
 

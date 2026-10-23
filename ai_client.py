@@ -47,12 +47,49 @@ def _post_json(url: str, payload: Dict[str, Any], headers: Dict[str, str], timeo
         raise AIClientError(f"Xəta: {str(e)[:80]}")
 
 
-def _clean_answer(ans: str) -> str:
-    text = (ans or "").replace("**", "").strip()
+def _extract_question_num(question_text: str) -> str:
+    if not question_text:
+        return ""
+    m = re.match(r"^\s*(?:Sual\s*|№\s*|#\s*)?(\d{1,3})\s*[\.\)\-:]", question_text, flags=re.IGNORECASE)
+    if m:
+        return m.group(1)
+    return ""
+
+
+def _clean_answer(ans: str, question_text: str = "") -> str:
+    text = (ans or "").replace("**", "").replace("*", "").strip()
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    cleaned = " | ".join(lines)
-    if len(cleaned) > 180:
-        cleaned = cleaned[:177] + "..."
+    first_line = lines[0] if lines else text
+
+    q_num = _extract_question_num(question_text)
+
+    # Check if AI already returned "14) B" or "15) 1-2-3"
+    m_prefixed = re.match(r"^(\d{1,3})\s*[\)\.\-:]\s*([A-Ea-e])\b", first_line)
+    if m_prefixed:
+        return f"{m_prefixed.group(1)}) {m_prefixed.group(2).upper()}"
+
+    m_num_seq = re.match(r"^(\d{1,3})\s*[\)\.\-:]\s*(\d+(?:\s*[-,]\s*\d+)+)", first_line)
+    if m_num_seq:
+        seq = re.sub(r"\s*[,]\s*", "-", m_num_seq.group(2).strip())
+        seq = re.sub(r"\s+", "", seq)
+        return f"{m_num_seq.group(1)}) {seq}"
+
+    # Check if first line starts with option letter like "B) Bakı" or "Cavab: B" or just "B"
+    m_opt = re.search(r"(?:^|Cavab\s*[:\-]?\s*|Option\s*[:\-]?\s*|Variant\s*[:\-]?\s*)([A-Ea-e])(?:\s*[\)\.\-:]|\s*$)", first_line, flags=re.IGNORECASE)
+    if m_opt:
+        letter = m_opt.group(1).upper()
+        return f"{q_num}) {letter}" if q_num else letter
+
+    # Check if it's a number sequence like "1-2-3" or "1, 2, 3"
+    m_seq = re.match(r"^(\d+(?:\s*[-,]\s*\d+)+)$", first_line)
+    if m_seq:
+        seq = re.sub(r"\s*[,]\s*", "-", m_seq.group(1).strip())
+        seq = re.sub(r"\s+", "", seq)
+        return f"{q_num}) {seq}" if q_num else seq
+
+    cleaned = first_line[:45].strip()
+    if q_num and not cleaned.startswith(f"{q_num})"):
+        return f"{q_num}) {cleaned}"
     return cleaned
 
 
@@ -62,11 +99,9 @@ def extract_text_from_image_bytes(image_bytes: bytes) -> str:
 
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         w, h = img.size
-        # Upscale for crisp OCR recognition
         scale = 2 if (h < 220 or w < 450) else 1
         if scale > 1:
             img = img.resize((w * scale, h * scale), Image.Resampling.LANCZOS)
-        # Add border so letters near edges are never clipped
         img_padded = ImageOps.expand(img, border=18, fill=(255, 255, 255))
 
         res = winocr.recognize_pil_sync(img_padded, "en-US")
@@ -75,7 +110,6 @@ def extract_text_from_image_bytes(image_bytes: bytes) -> str:
         if not text:
             text = (res.get("text") or "").strip()
 
-        # Fallback: try high-contrast grayscale if text is too short
         if len(text) < 4:
             gray = ImageOps.autocontrast(img.convert("L")).convert("RGB")
             gray_padded = ImageOps.expand(gray, border=18, fill=(255, 255, 255))
@@ -91,32 +125,51 @@ def extract_text_from_image_bytes(image_bytes: bytes) -> str:
 
 
 def _solve_free_text(cleaned_q: str, system_prompt: str) -> str:
-    nonce = random.randint(100000, 999999)
-    user_msg = (
-        f"[Sorğu ID: {nonce} — Yalnız aşağıdakı yeni sualı həll et, əvvəlki sualları unut]\n"
-        f"Sual və variantlar:\n{cleaned_q}\n\n"
-        f"Yalnız doğru cavab variantını (hərf və cavab mətni) qısa yaz:"
+    nonce = random.randint(1000000, 9999999)
+    strict_prompt = (
+        "QAYDA: Heç bir izahat, cümlə və ya söz YAZMA! "
+        "Yalnız sualın nömrəsini (əgər varsa) və doğru variant hərfini (A, B, C, D, E) və ya rəqəmləri yaz.\n"
+        "Nümunə formatlar:\n"
+        "14) B\n"
+        "15) 1-2-3\n"
+        "C\n\n"
+        f"Sual:\n{cleaned_q}\n\n"
+        "Cavab (yalnız hərf və ya rəqəm, izahatsız):"
     )
 
-    # 1. Try fast multi-provider g4f first (no 30s cooldown)
+    # 1. Pure HTTP background call to Yqcloud GPT-4 endpoint (0 browser, 0 cooldown)
     try:
-        import g4f
-
-        resp = g4f.ChatCompletion.create(
-            model=g4f.models.default,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_msg},
-            ],
+        headers = {
+            "accept": "application/json, text/plain, */*",
+            "content-type": "application/json",
+            "origin": "https://chat9.yqcloud.top",
+            "referer": "https://chat9.yqcloud.top/",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        }
+        data = json.dumps(
+            {
+                "prompt": strict_prompt,
+                "userId": f"#/chat/{nonce}",
+                "network": False,
+                "system": "Respond ONLY with the question number and option letter (e.g. '14) B' or '15) 1-2-3'). Never write explanations.",
+                "withoutContext": False,
+                "stream": False,
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.binjie.fun/api/generateStream",
+            data=data,
+            headers=headers,
+            method="POST",
         )
-        if isinstance(resp, str) and resp.strip():
-            cleaned = _clean_answer(resp)
-            if cleaned and "rate limit" not in cleaned.lower():
-                return cleaned
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw_ans = resp.read().decode("utf-8").strip()
+            if raw_ans:
+                return _clean_answer(raw_ans, cleaned_q)
     except Exception:
         pass
 
-    # 2. Fallback to Pollinations OpenAI endpoint with unique random seed (prevents caching)
+    # 2. Pure HTTP fallback to Pollinations OpenAI endpoint
     url = "https://text.pollinations.ai/openai"
     headers = {"Content-Type": "application/json"}
     payload = {
@@ -124,7 +177,7 @@ def _solve_free_text(cleaned_q: str, system_prompt: str) -> str:
         "seed": nonce,
         "messages": [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_msg},
+            {"role": "user", "content": strict_prompt},
         ],
         "temperature": 0.1,
     }
@@ -132,7 +185,7 @@ def _solve_free_text(cleaned_q: str, system_prompt: str) -> str:
         try:
             res = _post_json(url, payload, headers, timeout=25)
             content = res["choices"][0]["message"]["content"]
-            return _clean_answer(content)
+            return _clean_answer(content, cleaned_q)
         except AIClientError as e:
             err_str = str(e)
             m = re.search(r"Retry after (\d+)s", err_str)
@@ -142,8 +195,8 @@ def _solve_free_text(cleaned_q: str, system_prompt: str) -> str:
                 continue
             raise
         except (KeyError, IndexError):
-            raise AIClientError("Pulsuz AI-dan cavab oxuna bilmədi")
-    raise AIClientError("Pulsuz AI cavab vermədi")
+            raise AIClientError("Cavab oxuna bilmədi")
+    raise AIClientError("Cavab alınmadı")
 
 
 def _effective_provider(config: Dict[str, Any]) -> str:
@@ -170,6 +223,11 @@ def solve_text(question_text: str, config: Dict[str, Any]) -> str:
     if provider == "free":
         return _solve_free_text(cleaned_q, system_prompt)
 
+    strict_user = (
+        f"Sual:\n{cleaned_q}\n\n"
+        "Yalnız sualın nömrəsini (varsa) və doğru cavab variantını yaz (məsələn: '14) B' və ya '15) 1-2-3'). İzahat yazma."
+    )
+
     if provider == "openai":
         api_key = (config.get("openai_api_key") or "").strip()
         model = config.get("openai_model", "gpt-4o-mini").strip() or "gpt-4o-mini"
@@ -182,15 +240,15 @@ def solve_text(question_text: str, config: Dict[str, Any]) -> str:
             "model": model,
             "messages": [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Sual və variantlar:\n{cleaned_q}"},
+                {"role": "user", "content": strict_user},
             ],
             "temperature": 0.1,
-            "max_tokens": 200,
+            "max_tokens": 50,
         }
         res = _post_json(url, payload, headers)
         try:
             content = res["choices"][0]["message"]["content"]
-            return _clean_answer(content)
+            return _clean_answer(content, cleaned_q)
         except (KeyError, IndexError):
             raise AIClientError("OpenAI-dan cavab oxuna bilmədi")
     else:
@@ -200,20 +258,14 @@ def solve_text(question_text: str, config: Dict[str, Any]) -> str:
         headers = {"Content-Type": "application/json"}
         payload = {
             "systemInstruction": {"parts": [{"text": system_prompt}]},
-            "contents": [
-                {
-                    "parts": [
-                        {"text": f"Sual və variantlar:\n{cleaned_q}"}
-                    ]
-                }
-            ],
-            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 200},
+            "contents": [{"parts": [{"text": strict_user}]}],
+            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 50},
         }
         res = _post_json(url, payload, headers)
         try:
             parts = res["candidates"][0]["content"]["parts"]
             content = "".join(p.get("text", "") for p in parts)
-            return _clean_answer(content)
+            return _clean_answer(content, cleaned_q)
         except (KeyError, IndexError):
             raise AIClientError("Gemini-dən cavab oxuna bilmədi")
 
@@ -228,13 +280,13 @@ def solve_image(image_bytes: bytes, config: Dict[str, Any]) -> str:
     if provider == "free":
         ocr_text = extract_text_from_image_bytes(image_bytes)
         if not ocr_text or len(ocr_text.strip()) < 2:
-            raise AIClientError("Şəkildə mətn tapılmadı (sualı tam əhatə edin)")
+            raise AIClientError("Şəkildə mətn tapılmadı")
         return _solve_free_text(ocr_text, system_prompt)
 
     b64_img = base64.b64encode(image_bytes).decode("ascii")
     user_instruction = (
-        "Bu şəkildəki imtahan/test sualını və cavab variantlarını oxu. "
-        "Yalnız doğru cavab variantını (məsələn: 'C) Cavab') və ya qısa dəqiq cavabı yaz."
+        "Bu şəkildəki sualı oxu. Heç bir izahat yazma! "
+        "Yalnız sualın nömrəsini (varsa) və doğru cavab hərfini və ya rəqəmləri yaz (məsələn: '14) B' və ya '15) 1-2-3')."
     )
 
     if provider == "openai":
@@ -261,7 +313,7 @@ def solve_image(image_bytes: bytes, config: Dict[str, Any]) -> str:
                 },
             ],
             "temperature": 0.1,
-            "max_tokens": 200,
+            "max_tokens": 50,
         }
         res = _post_json(url, payload, headers)
         try:
@@ -289,7 +341,7 @@ def solve_image(image_bytes: bytes, config: Dict[str, Any]) -> str:
                     ]
                 }
             ],
-            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 200},
+            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 50},
         }
         res = _post_json(url, payload, headers)
         try:
@@ -302,7 +354,7 @@ def solve_image(image_bytes: bytes, config: Dict[str, Any]) -> str:
 
 def test_connection(config: Dict[str, Any]) -> Tuple[bool, str]:
     try:
-        ans = solve_text("2 + 2 neçə edir? A) 3  B) 4  C) 5", config)
+        ans = solve_text("14. 2 + 2 neçə edir? A) 3  B) 4  C) 5", config)
         return True, f"Uğurlu! Test cavabı: {ans}"
     except AIClientError as e:
         return False, str(e)

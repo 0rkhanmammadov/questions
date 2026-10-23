@@ -56,21 +56,21 @@ def test_ai_client_gemini_and_openai_mock() -> None:
     gemini_cfg = {"provider": "gemini", "gemini_api_key": "fake-key"}
     with patch("ai_client._post_json") as mock_post:
         mock_post.return_value = {
-            "candidates": [{"content": {"parts": [{"text": "B) Bakı\n"}]}}]
+            "candidates": [{"content": {"parts": [{"text": "14) B) Bakı\n"}]}}]
         }
-        ans = solve_text("Azərbaycanın paytaxtı?", gemini_cfg)
-        assert ans == "B) Bakı"
+        ans = solve_text("14. Azərbaycanın paytaxtı?", gemini_cfg)
+        assert ans == "14) B"
 
         img_ans = solve_image(b"fake_png_bytes", gemini_cfg)
-        assert img_ans == "B) Bakı"
+        assert img_ans == "14) B"
 
     openai_cfg = {"provider": "openai", "openai_api_key": "sk-fake"}
     with patch("ai_client._post_json") as mock_post:
         mock_post.return_value = {
-            "choices": [{"message": {"content": "C) 42"}}]
+            "choices": [{"message": {"content": "15) 1, 2, 3"}}]
         }
-        ans = solve_text("Cavab nədir?", openai_cfg)
-        assert ans == "C) 42"
+        ans = solve_text("15. Cavab nədir?", openai_cfg)
+        assert ans == "15) 1-2-3"
 
 
 def test_hotkey_state_machine() -> None:
