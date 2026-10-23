@@ -1,0 +1,33 @@
+===================================================================
+        GİZLİ İMTAHAN KÖMƏKÇİSİ — İSTİFADƏ TƏLİMATI
+===================================================================
+
+1. PROQRAMI İŞƏ SALMAQ (VƏ YA YENİLƏMƏK):
+   - Qovluqdakı "baslat.bat" faylının üzərinə 2 dəfə kliklə.
+   - Köhnə açıq nüsxə varsa avtomatik bağlanacaq və yenisi işə düşəcək.
+
+2. SUALI GÖTÜRMƏK (KOPYALAMA BAĞLI OLAN VƏ YA AÇIQ SAYTLARDA):
+
+   ÜSUL 1 — Bir düymə ilə Tam Ekran Skrinşotu (Mausla seçməyə ehtiyac yoxdur):
+   - Sadəcə "Ctrl + X" (və ya "PrintScreen") düyməsini bas.
+   - Proqram bütün brauzer ekranının şəklini çəkib sualı şəkildən oxuyacaq.
+
+   ÜSUL 2 — Seçilmiş sahənin Skrinşotu:
+   - "Ctrl" basılı saxla + mausun sol düyməsi ilə sualın üstündən çəkib burax.
+   - Həmin hissənin şəklini çəkib oxuyacaq.
+
+   ÜSUL 3 — Ağıllı "Ctrl + C" (Həm mətn, həm Avto-Skrinşot):
+   - Sualın üstündən mausla çəkib "Ctrl + C" bas:
+     * Saytda kopyalama açıqdırsa -> mətni oxuyur.
+     * Saytda kopyalama BAĞLIDIRSA -> avtomatik həmin hissənin (və ya ekranın)
+       skrinşotunu çəkib şəkildən oxuyur!
+
+3. CAVABA BAXMAQ:
+   - "Ctrl + Shift" düymələrini birlikdə basılı saxla:
+     * Məsələn:  ✓ [#1] B) Bakı  (Sual: Azərbaycanın paytaxtı...)
+   - Əlini "Ctrl + Shift"-dən çəkən kimi qutu dərhal yox olur.
+
+4. İDARƏETMƏ DÜYMƏLƏRİ:
+   - Ctrl + Shift + S  ---> Ayarlar pəncərəsini açır.
+   - Ctrl + Shift + Q  ---> Proqramı tamamilə söndürür.
+===================================================================

@@ -1,0 +1,15 @@
+{
+  "provider": "free",
+  "gemini_api_key": "",
+  "gemini_model": "gemini-2.5-flash",
+  "openai_api_key": "",
+  "openai_model": "gpt-4o-mini",
+  "opacity": 0.78,
+  "font_size": 10,
+  "position_mode": "cursor",
+  "exclude_from_capture": true,
+  "ctrl_c_enabled": true,
+  "flash_indicator_enabled": true,
+  "tray_enabled": true,
+  "system_prompt": "Sən imtahan və test suallarını həll edən dəqiq köməkçisən. Verilən sualı və cavab variantlarını diqqətlə təhlil et (OCR xətaları olsa belə mənanı bərpa et). Yalnız doğru cavab variantını (məsələn: 'B) Doğru cavab') və ya açıq sualdırsa birbaşa qısa, dəqiq cavabı yaz. Əlavə uzun izahat yazma."
+}
