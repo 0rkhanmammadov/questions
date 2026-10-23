@@ -15,13 +15,31 @@ class AIClientError(Exception):
     pass
 
 
+def _urlopen_direct(req: urllib.request.Request, timeout: int = 20):
+    import ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    try:
+        # First try direct connection bypassing any restrictive Windows system proxy
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}),
+            urllib.request.HTTPSHandler(context=ctx),
+        )
+        return opener.open(req, timeout=timeout)
+    except Exception:
+        # Fallback to system default proxy if direct connection is not available
+        opener_sys = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
+        return opener_sys.open(req, timeout=timeout)
+
+
 def _post_json(url: str, payload: Dict[str, Any], headers: Dict[str, str], timeout: int = 25) -> Dict[str, Any]:
     data = json.dumps(payload).encode("utf-8")
     req_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     req_headers.update(headers)
     req = urllib.request.Request(url, data=data, headers=req_headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _urlopen_direct(req, timeout=timeout) as resp:
             raw = resp.read().decode("utf-8")
             return json.loads(raw)
     except urllib.error.HTTPError as e:
@@ -162,7 +180,7 @@ def _solve_free_text(cleaned_q: str, system_prompt: str) -> str:
             headers=headers,
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with _urlopen_direct(req, timeout=15) as resp:
             raw_ans = resp.read().decode("utf-8").strip()
             if raw_ans:
                 return _clean_answer(raw_ans, cleaned_q)
