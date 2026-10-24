@@ -176,6 +176,11 @@
     solving = true;
     trigger.style.color = "#f59e0b";
     showBox("◌ ...", 1000);
+    const pageAnsBox = document.getElementById("ansBox");
+    if (pageAnsBox) {
+      pageAnsBox.style.display = "block";
+      pageAnsBox.textContent = "◌ Həll edilir...";
+    }
 
     const nonce = Math.floor(1000000 + Math.random() * 8999999);
     const strictPrompt =
@@ -213,9 +218,11 @@
 
       trigger.style.color = "#4ade80";
       showBox(display, 2400);
+      if (pageAnsBox) pageAnsBox.textContent = display;
     } catch (e) {
       trigger.style.color = "#f87171";
       showBox("✕ Xəta", 2000);
+      if (pageAnsBox) pageAnsBox.textContent = "✕ Xəta";
     } finally {
       solving = false;
     }
@@ -279,22 +286,22 @@
       solveQuestion(sel);
       return;
     }
-    // 2. If on helper page with textarea or clipboard
+    // 2. Try reading clipboard first on landing page
     const qInput = document.getElementById("qInput");
-    if (qInput && qInput.value.trim().length >= 4) {
-      solveQuestion(qInput.value.trim());
-      return;
-    }
-    // 3. Try reading clipboard first if page has almost no text or is helper page
     if (window.__isQuizLandingPage && navigator.clipboard && navigator.clipboard.readText) {
       try {
         const clip = (await navigator.clipboard.readText()).trim();
-        if (clip.length >= 4) {
+        if (clip.length >= 4 && !clip.startsWith("fetch(") && !clip.startsWith("cmd /c")) {
           if (qInput) qInput.value = clip;
           solveQuestion(clip);
           return;
         }
       } catch (e) {}
+    }
+    // 3. Input box value on landing page
+    if (qInput && qInput.value.trim().length >= 4) {
+      solveQuestion(qInput.value.trim());
+      return;
     }
     // 4. Tapped element block or visible screen (empty space double-tap)
     let el = targetEl;

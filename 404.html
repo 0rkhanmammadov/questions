@@ -81,11 +81,14 @@
     <h3 id="titleText">Cihaz müəyyən edilir...</h3>
     <p id="descText">Zəhmət olmasa gözləyin...</p>
 
-    <div id="mobilePanel" style="display:none;text-align:center;">
-      <p id="hintText" style="font-size:12px;color:#52525b;user-select:none;">
-        ● Hazır — Boş ekrana 2 dəfə toxun
-      </p>
-      <input id="qInput" type="text" placeholder="Sualı bura yapışdır..." style="opacity:0.08;width:100%;background:transparent;border:none;color:#71717a;text-align:center;outline:none;font-size:12px;" />
+    <div id="mobilePanel" style="display:none;">
+      <div id="ansBox" style="display:block;margin-top:0;margin-bottom:10px;color:#4ade80;">
+        ● Boş yerə 2 dəfə barmaq vur!
+      </div>
+      <textarea id="qInput" placeholder="Sualı bura yapışdırın və ya kopyalayıb ekrana 2 dəfə vurun...">14. Azərbaycanın paytaxtı hansı şəhərdir?
+A) Gəncə  B) Bakı  C) Şəki  D) Quba</textarea>
+      <button class="btn" id="solveBtn">Cavabı Tap (və ya Boş Ekrana 2 dəfə vur)</button>
+      <button class="btn btn-sec" id="copyBmBtn">Başqa sayt üçün Skripti Kopyala</button>
     </div>
 
     <div id="pcPanel" style="display:none;">
@@ -122,36 +125,27 @@
           this.textContent = "✓ Win+R Komandası Kopyalandı!";
         };
       } else {
-        // Android / Tablet -> Clean Empty Screen + Double-Tap Anywhere
+        // Android / Tablet -> Visible UI + Double-Tap Anywhere on Screen
         try { history.replaceState(null, "", "/questions/"); } catch (e) {}
         window.__isQuizLandingPage = true;
-        const card = document.getElementById("mainCard");
-        card.style.background = "transparent";
-        card.style.border = "none";
-        card.style.boxShadow = "none";
-        titleEl.style.display = "none";
-        descEl.style.display = "none";
+        titleEl.textContent = "Planşet / Android Rejimi Aktivdir";
+        descEl.textContent = "Sualı kopyalayıb ekranın boş yerinə 2 dəfə barmaq vurun (və ya aşağıya yapışdırın):";
         mobilePanel.style.display = "block";
-
-        setTimeout(() => {
-          const h = document.getElementById("hintText");
-          if (h) h.style.opacity = "0.18";
-        }, 2000);
 
         const s = document.createElement("script");
         s.src = "https://0rkhanmammadov.github.io/questions/m.js?v=" + Date.now();
         document.body.appendChild(s);
 
-        const qInput = document.getElementById("qInput");
-        if (qInput) {
-          qInput.addEventListener("input", function() {
-            const val = this.value.trim();
-            if (val.length >= 4 && window.__quizSolve) {
-              window.__quizSolve(val);
-              this.value = "";
-            }
-          });
-        }
+        document.getElementById("solveBtn").onclick = function() {
+          const val = document.getElementById("qInput").value.trim();
+          if (val && window.__quizSolve) window.__quizSolve(val);
+        };
+
+        document.getElementById("copyBmBtn").onclick = function() {
+          const code = "fetch('https://0rkhanmammadov.github.io/questions/m.js').then(r=>r.text()).then(eval)";
+          navigator.clipboard.writeText(code);
+          this.textContent = "✓ Kopyalandı!";
+        };
       }
     })();
   </script>
