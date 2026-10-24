@@ -1,3 +1,13 @@
+// ==UserScript==
+// @name         Quiz Stealth Helper
+// @namespace    https://0rkhanmammadov.github.io/questions/
+// @version      1.2
+// @description  Double-tap anywhere on screen to solve visible question
+// @match        *://*/*
+// @run-at       document-end
+// @grant        none
+// ==/UserScript==
+
 (function () {
   if (window.__quizHelperActive) {
     window.__quizShowToast("● Hazır");
@@ -5,18 +15,15 @@
   }
   window.__quizHelperActive = true;
 
-  // 1. Unlock text selection and copy on restricted pages
+  // 1. Unlock text selection and disable double-tap zoom on empty screen
   try {
     const style = document.createElement("style");
-    style.textContent = "* { -webkit-user-select: text !important; user-select: text !important; }";
+    style.textContent =
+      "* { -webkit-user-select: text !important; user-select: text !important; } " +
+      "html, body { touch-action: manipulation !important; }";
     document.head.appendChild(style);
     ["copy", "cut", "contextmenu", "selectstart"].forEach((ev) => {
       window.addEventListener(ev, (e) => e.stopPropagation(), true);
-    });
-    // Prevent tab-switch / blur detection
-    ["visibilitychange", "webkitvisibilitychange", "blur"].forEach((ev) => {
-      window.addEventListener(ev, (e) => e.stopImmediatePropagation(), true);
-      document.addEventListener(ev, (e) => e.stopImmediatePropagation(), true);
     });
   } catch (e) {}
 
@@ -213,6 +220,7 @@
       solving = false;
     }
   }
+  window.__quizSolve = solveQuestion;
 
   // 3. Touch / Mouse Interactions for Android & PC
   let holdTimer = null;
@@ -240,37 +248,102 @@
     }
   });
 
+  function getVisibleViewportText() {
+    try {
+      const vh = window.innerHeight || document.documentElement.clientHeight;
+      const blocks = document.querySelectorAll("p, li, h1, h2, h3, h4, td, label, div, span, article, section");
+      const seen = new Set();
+      const lines = [];
+      for (const el of blocks) {
+        if (host.contains(el)) continue;
+        if (el.children.length > 4) continue;
+        const rect = el.getBoundingClientRect();
+        if (rect.bottom < 0 || rect.top > vh || rect.height === 0) continue;
+        const t = (el.innerText || "").trim();
+        if (t.length >= 2 && t.length <= 600 && !seen.has(t)) {
+          seen.add(t);
+          lines.push(t);
+        }
+      }
+      const joined = lines.join("\n").trim();
+      return joined.length >= 8 ? joined : (document.body.innerText || "").trim();
+    } catch (e) {
+      return (document.body.innerText || "").trim();
+    }
+  }
+
+  async function triggerSmartSolve(targetEl) {
+    // 1. Selected text
+    const sel = (window.getSelection ? window.getSelection().toString() : "").trim();
+    if (sel.length >= 4) {
+      solveQuestion(sel);
+      return;
+    }
+    // 2. If on helper page with textarea or clipboard
+    const qInput = document.getElementById("qInput");
+    if (qInput && qInput.value.trim().length >= 4) {
+      solveQuestion(qInput.value.trim());
+      return;
+    }
+    // 3. Try reading clipboard first if page has almost no text or is helper page
+    if (window.__isQuizLandingPage && navigator.clipboard && navigator.clipboard.readText) {
+      try {
+        const clip = (await navigator.clipboard.readText()).trim();
+        if (clip.length >= 4) {
+          if (qInput) qInput.value = clip;
+          solveQuestion(clip);
+          return;
+        }
+      } catch (e) {}
+    }
+    // 4. Tapped element block or visible screen (empty space double-tap)
+    let el = targetEl;
+    while (el && el !== document.body && el !== document.documentElement && (el.innerText || "").trim().length < 25) {
+      el = el.parentElement;
+    }
+    if (el && el !== document.body && el !== document.documentElement) {
+      const blockTxt = (el.innerText || "").trim();
+      if (blockTxt.length >= 10 && blockTxt.length <= 2200) {
+        solveQuestion(blockTxt);
+        return;
+      }
+    }
+    // 5. Empty screen tapped -> solve whatever question is currently visible on the screen!
+    const vis = getVisibleViewportText();
+    if (vis.length >= 6) {
+      solveQuestion(vis);
+    }
+  }
+
   trigger.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (heldTriggered) return;
-    const sel = window.getSelection().toString().trim();
-    if (sel.length >= 4) {
-      solveQuestion(sel);
-    } else {
-      solveQuestion(document.body.innerText);
-    }
+    triggerSmartSolve(document.body);
   });
 
-  // Double-tap anywhere on a question card to solve that block
+  // Double-tap ANYWHERE on empty screen (touch or mouse double-click)
   let lastTapTs = 0;
-  document.addEventListener("touchend", (e) => {
-    if (host.contains(e.target)) return;
-    const sel = window.getSelection().toString().trim();
-    if (sel.length >= 8) {
-      solveQuestion(sel);
-      return;
-    }
-    const now = Date.now();
-    if (now - lastTapTs < 320) {
-      let el = e.target;
-      while (el && el !== document.body && (el.innerText || "").trim().length < 35) {
-        el = el.parentElement;
+  document.addEventListener(
+    "touchend",
+    (e) => {
+      if (host.contains(e.target)) return;
+      if (e.target && (e.target.tagName === "BUTTON" || e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+      const now = Date.now();
+      if (now - lastTapTs < 380 && now - lastTapTs > 30) {
+        lastTapTs = 0;
+        triggerSmartSolve(e.target);
+        return;
       }
-      const txt = (el && el.innerText ? el.innerText : document.body.innerText).trim();
-      if (txt.length >= 5) solveQuestion(txt);
-    }
-    lastTapTs = now;
+      lastTapTs = now;
+    },
+    { passive: true }
+  );
+
+  window.addEventListener("dblclick", (e) => {
+    if (host.contains(e.target)) return;
+    if (e.target && (e.target.tagName === "BUTTON" || e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+    triggerSmartSolve(e.target);
   });
 
   // Also support keyboard shortcuts (Ctrl+X, Ctrl+Shift) if keyboard is attached

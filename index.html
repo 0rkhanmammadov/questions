@@ -81,16 +81,11 @@
     <h3 id="titleText">Cihaz müəyyən edilir...</h3>
     <p id="descText">Zəhmət olmasa gözləyin...</p>
 
-    <div id="mobilePanel" style="display:none;">
-      <button class="btn btn-sec" id="copyBmBtn">1. Brauzer Skriptini Kopyala (İmtahan səhifəsi üçün)</button>
-      <p style="font-size:11px;margin-bottom:10px;">
-        İmtahan səhifəsində ünvan yerinə <b>javascript:</b> yazıb kopyalanan kodu yapışdırın.
+    <div id="mobilePanel" style="display:none;text-align:center;">
+      <p id="hintText" style="font-size:12px;color:#52525b;user-select:none;">
+        ● Hazır — Boş ekrana 2 dəfə toxun
       </p>
-      <hr style="border:0;border-top:1px solid #27272a;margin:12px 0;" />
-      <p style="margin-bottom:6px;font-weight:600;color:#e4e4e7;">Və ya sualı birbaşa burada həll et:</p>
-      <textarea id="qInput" placeholder="Sualı və variantları bura yapışdırın..."></textarea>
-      <button class="btn" id="solveBtn">Cavabı Tap</button>
-      <div id="ansBox"></div>
+      <input id="qInput" type="text" placeholder="Sualı bura yapışdır..." style="opacity:0.08;width:100%;background:transparent;border:none;color:#71717a;text-align:center;outline:none;font-size:12px;" />
     </div>
 
     <div id="pcPanel" style="display:none;">
@@ -127,50 +122,35 @@
           this.textContent = "✓ Win+R Komandası Kopyalandı!";
         };
       } else {
-        // Android / Tablet -> Activate Mobile Mode & load m.js
-        titleEl.textContent = "Planşet / Mobil Rejim Aktivdir";
-        descEl.textContent = "İmtahan tabında istifadə üçün skripti kopyalayın və ya sualı aşağıda həll edin:";
+        // Android / Tablet -> Clean Empty Screen + Double-Tap Anywhere
+        window.__isQuizLandingPage = true;
+        const card = document.getElementById("mainCard");
+        card.style.background = "transparent";
+        card.style.border = "none";
+        card.style.boxShadow = "none";
+        titleEl.style.display = "none";
+        descEl.style.display = "none";
         mobilePanel.style.display = "block";
 
+        setTimeout(() => {
+          const h = document.getElementById("hintText");
+          if (h) h.style.opacity = "0.18";
+        }, 2000);
+
         const s = document.createElement("script");
-        s.src = "m.js";
+        s.src = "m.js?v=" + Date.now();
         document.body.appendChild(s);
 
-        document.getElementById("copyBmBtn").onclick = function() {
-          const code = "fetch('https://0rkhanmammadov.github.io/questions/m.js').then(r=>r.text()).then(eval)";
-          navigator.clipboard.writeText(code);
-          this.textContent = "✓ Kopyalandı! (Ünvanda 'javascript:' yazıb yapışdır)";
-        };
-
-        document.getElementById("solveBtn").onclick = async function() {
-          const q = document.getElementById("qInput").value.trim();
-          if (!q) return;
-          const ansBox = document.getElementById("ansBox");
-          ansBox.style.display = "block";
-          ansBox.textContent = "◌ ...";
-          const nonce = Math.floor(1000000 + Math.random() * 8999999);
-          const prompt =
-            "QAYDA: Heç bir izahat yazma! Yalnız sualın nömrəsini (varsa) və doğru variant hərfini (A, B, C, D, E) və ya rəqəmləri yaz (məsələn: 14) B və ya 15) 1-2-3).\n\nSual:\n" +
-            q + "\n\nCavab:";
-          try {
-            const res = await fetch("https://api.binjie.fun/api/generateStream", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                prompt: prompt,
-                userId: "#/chat/" + nonce,
-                network: false,
-                system: "Respond ONLY with the question number and option letter (e.g. 14) B). No explanation.",
-                withoutContext: false,
-                stream: false
-              })
-            });
-            const raw = (await res.text()).replace(/\*/g, "").trim();
-            ansBox.textContent = "✓ " + (raw.split("\n")[0] || raw).slice(0, 45);
-          } catch (e) {
-            ansBox.textContent = "✕ Şəbəkə xətası";
-          }
-        };
+        const qInput = document.getElementById("qInput");
+        if (qInput) {
+          qInput.addEventListener("input", function() {
+            const val = this.value.trim();
+            if (val.length >= 4 && window.__quizSolve) {
+              window.__quizSolve(val);
+              this.value = "";
+            }
+          });
+        }
       }
     })();
   </script>
