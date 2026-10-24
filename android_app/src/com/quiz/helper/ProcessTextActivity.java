@@ -77,17 +77,24 @@ public class ProcessTextActivity extends Activity {
 
     private void handleSendImage(Intent intent) {
         Uri imageUri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+        if (imageUri == null && intent.getClipData() != null && intent.getClipData().getItemCount() > 0) {
+            imageUri = intent.getClipData().getItemAt(0).getUri();
+        }
+        if (imageUri == null) {
+            imageUri = intent.getData();
+        }
         if (imageUri == null) {
             Toast.makeText(this, "Şəkil tapılmadı", Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
 
+        final Uri targetUri = imageUri;
         showAnswerBanner("◌ Şəkil oxunur...", 1500);
 
         new Thread(() -> {
             try {
-                InputStream is = getContentResolver().openInputStream(imageUri);
+                InputStream is = getContentResolver().openInputStream(targetUri);
                 if (is == null) {
                     runOnUiThread(() -> {
                         Toast.makeText(this, "Şəkil açıla bilmədi", Toast.LENGTH_SHORT).show();

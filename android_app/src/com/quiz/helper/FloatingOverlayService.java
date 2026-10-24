@@ -235,16 +235,18 @@ public class FloatingOverlayService extends Service {
                 @Override
                 public void onScreenshot(byte[] jpegBytes) {
                     if (jpegBytes != null && jpegBytes.length > 500) {
+                        mainHandler.post(() -> showTempMessage("◌ Gemini Vision...", 1500));
                         AiSolver.solveImageAsync(jpegBytes, new AiSolver.Callback() {
                             @Override
                             public void onResult(final String formattedAnswer) {
                                 mainHandler.post(() -> {
                                     dotButton.setTextColor(Color.parseColor("#4ADE80"));
-                                    showTempMessage(formattedAnswer, 3000);
+                                    showTempMessage(formattedAnswer, 3500);
                                 });
                             }
                         });
                     } else {
+                        mainHandler.post(() -> showTempMessage("✕ Şəkil alına bilmədi", 2000));
                         fallbackTextSolve(reader);
                     }
                 }
