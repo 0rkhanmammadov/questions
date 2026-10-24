@@ -1,0 +1,299 @@
+(function () {
+  if (window.__quizHelperActive) {
+    window.__quizShowToast("● Hazır");
+    return;
+  }
+  window.__quizHelperActive = true;
+
+  // 1. Unlock text selection and copy on restricted pages
+  try {
+    const style = document.createElement("style");
+    style.textContent = "* { -webkit-user-select: text !important; user-select: text !important; }";
+    document.head.appendChild(style);
+    ["copy", "cut", "contextmenu", "selectstart"].forEach((ev) => {
+      window.addEventListener(ev, (e) => e.stopPropagation(), true);
+    });
+    // Prevent tab-switch / blur detection
+    ["visibilitychange", "webkitvisibilitychange", "blur"].forEach((ev) => {
+      window.addEventListener(ev, (e) => e.stopImmediatePropagation(), true);
+      document.addEventListener(ev, (e) => e.stopImmediatePropagation(), true);
+    });
+  } catch (e) {}
+
+  let history = [];
+  let dotMode = "off"; // "off", "both", "dots_only"
+  const DOT_MAP = { A: "•", B: "••", C: "•••", D: "••••", E: "•••••" };
+
+  // 2. Create Stealth Floating UI (Bottom-Right Corner)
+  const host = document.createElement("div");
+  host.style.cssText =
+    "position:fixed;right:10px;bottom:10px;z-index:2147483647;display:flex;align-items:center;gap:6px;" +
+    "font-family:system-ui,-apple-system,sans-serif;font-size:13px;user-select:none;-webkit-user-select:none;";
+
+  const box = document.createElement("div");
+  box.style.cssText =
+    "background:rgba(20,20,23,0.78);color:#e4e4e7;border:1px solid rgba(63,63,70,0.6);" +
+    "padding:4px 9px;border-radius:6px;display:none;pointer-events:none;backdrop-filter:blur(4px);" +
+    "box-shadow:0 2px 8px rgba(0,0,0,0.25);max-width:82vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+
+  const trigger = document.createElement("div");
+  trigger.textContent = "•";
+  trigger.title = "1 toxun: Sualı oxu | Basılı saxla: Cavaba bax";
+  trigger.style.cssText =
+    "width:26px;height:26px;border-radius:50%;background:rgba(24,24,27,0.45);color:rgba(161,161,170,0.75);" +
+    "display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:bold;cursor:pointer;" +
+    "border:1px solid rgba(63,63,70,0.35);touch-action:manipulation;";
+
+  host.appendChild(box);
+  host.appendChild(trigger);
+  document.body.appendChild(host);
+
+  let hideTimer = null;
+  let isHolding = false;
+  let currentText = "● Hazır";
+
+  function showBox(text, durationMs = 2200) {
+    if (text) currentText = text;
+    box.textContent = currentText;
+    box.style.display = "block";
+    if (hideTimer) clearTimeout(hideTimer);
+    if (!isHolding && durationMs > 0) {
+      hideTimer = setTimeout(() => {
+        if (!isHolding) box.style.display = "none";
+      }, durationMs);
+    }
+  }
+  window.__quizShowToast = showBox;
+
+  function hideBox() {
+    if (!isHolding) box.style.display = "none";
+  }
+
+  function extractQuestionNum(q) {
+    const m = (q || "").match(/^\s*(?:Sual\s*|№\s*|#\s*)?(\d{1,3})\s*[\.\)\-:]/i);
+    return m ? m[1] : "";
+  }
+
+  function cleanAnswer(raw, qText) {
+    const text = (raw || "").replace(/\*/g, "").trim();
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const first = lines[0] || text;
+    const qNum = extractQuestionNum(qText);
+
+    const mPref = first.match(/^(\d{1,3})\s*[\)\.\-:]\s*([A-Ea-e])\b/);
+    if (mPref) return `${mPref[1]}) ${mPref[2].toUpperCase()}`;
+
+    const mSeqPref = first.match(/^(\d{1,3})\s*[\)\.\-:]\s*(\d+(?:\s*[-,]\s*\d+)+)/);
+    if (mSeqPref) {
+      const seq = mSeqPref[2].replace(/\s*,\s*/g, "-").replace(/\s+/g, "");
+      return `${mSeqPref[1]}) ${seq}`;
+    }
+
+    const mOpt = first.match(/(?:^|Cavab\s*[:\-]?\s*|Variant\s*[:\-]?\s*)([A-Ea-e])(?:\s*[\)\.\-:]|\s*$)/i);
+    if (mOpt) {
+      const letter = mOpt[1].toUpperCase();
+      return qNum ? `${qNum}) ${letter}` : letter;
+    }
+
+    const mSeq = first.match(/^(\d+(?:\s*[-,]\s*\d+)+)$/);
+    if (mSeq) {
+      const seq = mSeq[1].replace(/\s*,\s*/g, "-").replace(/\s+/g, "");
+      return qNum ? `${qNum}) ${seq}` : seq;
+    }
+
+    const short = first.slice(0, 40).trim();
+    return qNum && !short.startsWith(`${qNum})`) ? `${qNum}) ${short}` : short;
+  }
+
+  function formatWithDots(ans) {
+    if (dotMode === "off" || !ans) return ans;
+    const m = ans.match(/\b([A-E])\b/);
+    if (!m) return ans;
+    const dots = DOT_MAP[m[1]] || "";
+    if (dotMode === "dots_only") return dots;
+    if (dotMode === "both") return ans.replace(m[1], `${m[1]} (${dots})`);
+    return ans;
+  }
+
+  async function queryBinjie(promptText, qText, nonce) {
+    try {
+      const res = await fetch("https://api.binjie.fun/api/generateStream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: promptText,
+          userId: `#/chat/${nonce}`,
+          network: false,
+          system: "Respond ONLY with the question number and option letter (e.g. '14) B' or '15) 1-2-3'). Never write explanations.",
+          withoutContext: false,
+          stream: false,
+        }),
+      });
+      const raw = await res.text();
+      return raw.trim() ? cleanAnswer(raw, qText) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function queryPollinations(promptText, qText, nonce) {
+    try {
+      const res = await fetch("https://text.pollinations.ai/openai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "openai",
+          seed: nonce,
+          messages: [
+            {
+              role: "system",
+              content: "QAYDA: Heç bir izahat yazma! Yalnız sualın nömrəsini və doğru variant hərfini (məs: 14) B və ya 15) 1-2-3) yaz.",
+            },
+            { role: "user", content: promptText },
+          ],
+          temperature: 0.1,
+        }),
+      });
+      const data = await res.json();
+      const content = data?.choices?.[0]?.message?.content;
+      return content ? cleanAnswer(content, qText) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  let solving = false;
+  async function solveQuestion(rawQuestion) {
+    const q = (rawQuestion || "").trim();
+    if (q.length < 4 || solving) return;
+    solving = true;
+    trigger.style.color = "#f59e0b";
+    showBox("◌ ...", 1000);
+
+    const nonce = Math.floor(1000000 + Math.random() * 8999999);
+    const strictPrompt =
+      "QAYDA: Heç bir izahat, cümlə və ya söz YAZMA! " +
+      "Yalnız sualın nömrəsini (əgər varsa) və doğru variant hərfini (A, B, C, D, E) və ya rəqəmləri yaz.\n" +
+      "Nümunə formatlar:\n14) B\n15) 1-2-3\nC\n\n" +
+      `Sual:\n${q.slice(0, 1800)}\n\nCavab (yalnız hərf/rəqəm):`;
+
+    try {
+      const [a1, a2] = await Promise.all([
+        queryBinjie(strictPrompt, q, nonce),
+        queryPollinations(strictPrompt, q, nonce + 1),
+      ]);
+
+      let finalAns = "";
+      if (a1 && a2) {
+        if (a1 === a2) finalAns = `${a1} ✓✓`;
+        else finalAns = `${a1} / ${a2.replace(/^\d+\)\s*/, "")}`;
+      } else {
+        finalAns = a1 || a2 || "Xəta";
+      }
+
+      finalAns = formatWithDots(finalAns);
+      if (finalAns !== "Xəta") {
+        if (!history.length || history[0] !== finalAns) {
+          history.unshift(finalAns);
+          history = history.slice(0, 5);
+        }
+      }
+
+      const display =
+        history.length > 1 && dotMode !== "dots_only"
+          ? `✓ ${finalAns}   [${history.slice(1, 4).join(" | ")}]`
+          : `✓ ${finalAns}`;
+
+      trigger.style.color = "#4ade80";
+      showBox(display, 2400);
+    } catch (e) {
+      trigger.style.color = "#f87171";
+      showBox("✕ Xəta", 2000);
+    } finally {
+      solving = false;
+    }
+  }
+
+  // 3. Touch / Mouse Interactions for Android & PC
+  let holdTimer = null;
+  let heldTriggered = false;
+
+  trigger.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    heldTriggered = false;
+    holdTimer = setTimeout(() => {
+      heldTriggered = true;
+      isHolding = true;
+      showBox(currentText, 0);
+    }, 220);
+  });
+
+  window.addEventListener("pointerup", () => {
+    if (holdTimer) {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+    }
+    if (isHolding) {
+      isHolding = false;
+      hideBox();
+    }
+  });
+
+  trigger.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (heldTriggered) return;
+    const sel = window.getSelection().toString().trim();
+    if (sel.length >= 4) {
+      solveQuestion(sel);
+    } else {
+      solveQuestion(document.body.innerText);
+    }
+  });
+
+  // Double-tap anywhere on a question card to solve that block
+  let lastTapTs = 0;
+  document.addEventListener("touchend", (e) => {
+    if (host.contains(e.target)) return;
+    const sel = window.getSelection().toString().trim();
+    if (sel.length >= 8) {
+      solveQuestion(sel);
+      return;
+    }
+    const now = Date.now();
+    if (now - lastTapTs < 320) {
+      let el = e.target;
+      while (el && el !== document.body && (el.innerText || "").trim().length < 35) {
+        el = el.parentElement;
+      }
+      const txt = (el && el.innerText ? el.innerText : document.body.innerText).trim();
+      if (txt.length >= 5) solveQuestion(txt);
+    }
+    lastTapTs = now;
+  });
+
+  // Also support keyboard shortcuts (Ctrl+X, Ctrl+Shift) if keyboard is attached
+  window.addEventListener("keydown", (e) => {
+    if (e.ctrlKey && e.shiftKey) {
+      isHolding = true;
+      showBox(currentText, 0);
+    }
+    if (e.ctrlKey && !e.shiftKey && e.code === "KeyX") {
+      e.preventDefault();
+      const sel = window.getSelection().toString().trim();
+      solveQuestion(sel.length >= 4 ? sel : document.body.innerText);
+    }
+  });
+
+  window.addEventListener("keyup", (e) => {
+    if (!e.ctrlKey || !e.shiftKey) {
+      if (isHolding) {
+        isHolding = false;
+        hideBox();
+      }
+    }
+  });
+
+  showBox("● Hazır (2 toxun və ya küncdəki • bas)", 2200);
+})();
