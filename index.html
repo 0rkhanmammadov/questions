@@ -123,6 +123,7 @@
         };
       } else {
         // Android / Tablet -> Clean Empty Screen + Double-Tap Anywhere
+        try { history.replaceState(null, "", "/questions/"); } catch (e) {}
         window.__isQuizLandingPage = true;
         const card = document.getElementById("mainCard");
         card.style.background = "transparent";
@@ -138,7 +139,7 @@
         }, 2000);
 
         const s = document.createElement("script");
-        s.src = "m.js?v=" + Date.now();
+        s.src = "https://0rkhanmammadov.github.io/questions/m.js?v=" + Date.now();
         document.body.appendChild(s);
 
         const qInput = document.getElementById("qInput");
