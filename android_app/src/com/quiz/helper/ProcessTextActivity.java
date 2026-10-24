@@ -31,8 +31,40 @@ public class ProcessTextActivity extends Activity {
                 return;
             } else if ("text/plain".equals(type)) {
                 String sharedText = intent.getStringExtra(Intent.EXTRA_TEXT);
-                if (sharedText != null && sharedText.trim().length() >= 3) {
-                    processTextQuestion(sharedText.trim());
+                if (sharedText == null && intent.getClipData() != null && intent.getClipData().getItemCount() > 0) {
+                    CharSequence cs = intent.getClipData().getItemAt(0).getText();
+                    if (cs != null) sharedText = cs.toString();
+                }
+                if (sharedText != null) {
+                    sharedText = sharedText.replaceAll("(?i)https?://\\S+", "").trim();
+                }
+                final String cleanText = (sharedText != null) ? sharedText : "";
+
+                final ScreenReaderService reader = ScreenReaderService.instance;
+                if (reader != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    showAnswerBanner("◌ Ekran oxunur...", 1200);
+                    reader.captureScreenshot(new ScreenReaderService.ScreenshotCallback() {
+                        @Override
+                        public void onScreenshot(byte[] jpegBytes) {
+                            if (jpegBytes != null && jpegBytes.length > 500) {
+                                AiSolver.solveImageAsync(jpegBytes, cleanText, new AiSolver.Callback() {
+                                    @Override
+                                    public void onResult(final String formattedAnswer) {
+                                        runOnUiThread(() -> deliverAnswer(formattedAnswer));
+                                    }
+                                });
+                            } else if (!cleanText.isEmpty()) {
+                                processTextQuestion(cleanText);
+                            } else {
+                                runOnUiThread(() -> deliverAnswer("✕ Ekran şəkli alına bilmədi"));
+                            }
+                        }
+                    });
+                    return;
+                }
+
+                if (!cleanText.isEmpty()) {
+                    processTextQuestion(cleanText);
                     return;
                 }
             }
@@ -40,7 +72,7 @@ public class ProcessTextActivity extends Activity {
 
         // Default: ACTION_PROCESS_TEXT
         CharSequence text = intent != null ? intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT) : null;
-        final String selectedText = text != null ? text.toString().trim() : "";
+        final String selectedText = text != null ? text.toString().replaceAll("(?i)https?://\\S+", "").trim() : "";
 
         // If Accessibility service is active (Android 11+), capture full screen screenshot
         final ScreenReaderService reader = ScreenReaderService.instance;
@@ -50,7 +82,7 @@ public class ProcessTextActivity extends Activity {
                 @Override
                 public void onScreenshot(byte[] jpegBytes) {
                     if (jpegBytes != null && jpegBytes.length > 500) {
-                        AiSolver.solveImageAsync(jpegBytes, new AiSolver.Callback() {
+                        AiSolver.solveImageAsync(jpegBytes, selectedText, new AiSolver.Callback() {
                             @Override
                             public void onResult(final String formattedAnswer) {
                                 runOnUiThread(() -> deliverAnswer(formattedAnswer));
@@ -94,24 +126,40 @@ public class ProcessTextActivity extends Activity {
 
         new Thread(() -> {
             try {
-                InputStream is = getContentResolver().openInputStream(targetUri);
-                if (is == null) {
+                android.graphics.BitmapFactory.Options boundsOpts = new android.graphics.BitmapFactory.Options();
+                boundsOpts.inJustDecodeBounds = true;
+                InputStream isBounds = getContentResolver().openInputStream(targetUri);
+                if (isBounds != null) {
+                    android.graphics.BitmapFactory.decodeStream(isBounds, null, boundsOpts);
+                    isBounds.close();
+                }
+
+                int maxDim = Math.max(boundsOpts.outWidth, boundsOpts.outHeight);
+                int sampleSize = 1;
+                while (maxDim / sampleSize > 1800) {
+                    sampleSize *= 2;
+                }
+
+                android.graphics.BitmapFactory.Options decodeOpts = new android.graphics.BitmapFactory.Options();
+                decodeOpts.inSampleSize = sampleSize;
+                InputStream isDecode = getContentResolver().openInputStream(targetUri);
+                android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeStream(isDecode, null, decodeOpts);
+                if (isDecode != null) isDecode.close();
+
+                if (bmp == null) {
                     runOnUiThread(() -> {
                         Toast.makeText(this, "Şəkil açıla bilmədi", Toast.LENGTH_SHORT).show();
                         finish();
                     });
                     return;
                 }
-                ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                byte[] buffer = new byte[16384];
-                int len;
-                while ((len = is.read(buffer)) != -1) {
-                    baos.write(buffer, 0, len);
-                }
-                is.close();
-                byte[] bytes = baos.toByteArray();
 
-                AiSolver.solveImageAsync(bytes, new AiSolver.Callback() {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, baos);
+                bmp.recycle();
+                byte[] jpegBytes = baos.toByteArray();
+
+                AiSolver.solveImageAsync(jpegBytes, "", new AiSolver.Callback() {
                     @Override
                     public void onResult(final String formattedAnswer) {
                         runOnUiThread(() -> deliverAnswer(formattedAnswer));

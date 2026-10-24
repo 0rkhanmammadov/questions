@@ -114,13 +114,17 @@ public class AiSolver {
     }
 
     public static void solveImageAsync(final byte[] imageBytes, final Callback callback) {
+        solveImageAsync(imageBytes, "", callback);
+    }
+
+    public static void solveImageAsync(final byte[] imageBytes, final String hintText, final Callback callback) {
         if (imageBytes == null || imageBytes.length == 0 || solving) {
             return;
         }
         solving = true;
         executor.submit(() -> {
             try {
-                String ans = queryGeminiVision(imageBytes);
+                String ans = queryGeminiVision(imageBytes, hintText);
                 if (ans != null && !ans.equals("Xəta")) {
                     handleSuccess(ans, callback);
                 } else {
@@ -149,6 +153,10 @@ public class AiSolver {
     }
 
     public static String queryGeminiVision(byte[] imageBytes) {
+        return queryGeminiVision(imageBytes, "");
+    }
+
+    public static String queryGeminiVision(byte[] imageBytes, String hintText) {
         HttpURLConnection conn = null;
         try {
             String b64 = android.util.Base64.encodeToString(imageBytes, android.util.Base64.NO_WRAP);
@@ -162,15 +170,21 @@ public class AiSolver {
             conn.setRequestProperty("x-goog-api-key", GEMINI_KEY);
             conn.setDoOutput(true);
 
-            JSONObject textPart = new JSONObject();
-            textPart.put("text", "Sən ali dərəcəli imtahan və test ekspertisən. Şəkildəki sualı və variantları diqqətlə oxu, ən doğru cavabı tap.\n\n" +
+            String prompt = "Sən ali dərəcəli imtahan və test ekspertisən. Şəkildəki sualı və variantları diqqətlə oxu, ən doğru cavabı tap.\n\n" +
                     "QAYDALAR:\n" +
                     "1. Sualda A, B, C, D, E variantları varsa: Yalnız sualın nömrəsini (əgər varsa) və doğru variant hərfini yaz (məs: 14) B və ya B).\n" +
                     "2. Variant hərfləri yoxdursa: Doğru variantın mətnini qısa və dəqiq yaz (məs: 14) Prosessor və ya Prosessor).\n" +
                     "3. Çoxseçimlidirsə (məs. 3 doğru cavab): Bütün doğru variantları/nömrələri ardıcıl yaz (məs: 1, 2, 4 və ya 14) 1, 2, 4 və ya A, C, D).\n" +
                     "4. Uyğunluqdursa: '1-a, 2-c, 3-b' kimi yaz.\n" +
                     "5. Açıq sualdırsa: Birbaşa qısa cavab sözü və ya rəqəmi yaz.\n" +
-                    "6. Qətiyyən heç bir izahat YAZMA. Yalnız tək və dəqiq cavab!");
+                    "6. Qətiyyən heç bir izahat YAZMA. Yalnız tək və dəqiq cavab!";
+
+            if (hintText != null && !hintText.trim().isEmpty()) {
+                prompt += "\n\nQEYD: İstifadəçinin seçdiyi/fokuslandığı sual mətni budur:\n\"" + hintText.trim() + "\"\nŞəkildə bu sualı və onun variantlarını tapıb həll et.";
+            }
+
+            JSONObject textPart = new JSONObject();
+            textPart.put("text", prompt);
 
             JSONObject inlineData = new JSONObject();
             inlineData.put("mimeType", "image/jpeg");
