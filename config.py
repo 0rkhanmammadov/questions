@@ -18,6 +18,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "ctrl_c_enabled": True,
     "flash_indicator_enabled": True,
     "tray_enabled": True,
+    "dual_ai_enabled": True,
+    "dot_mode": "off",  # "off", "both", "dots_only"
+    "history_enabled": True,
+    "local_db_enabled": True,
     "system_prompt": (
         "QAYDA: Heç bir izahat, cümlə və ya söz YAZMA! "
         "Yalnız sualın nömrəsini (əgər varsa) və doğru variant hərfini və ya rəqəmləri yaz. "

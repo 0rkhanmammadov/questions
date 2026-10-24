@@ -9,12 +9,14 @@ VK_C = 0x43
 VK_X = 0x58
 VK_S = 0x53
 VK_Q = 0x51
+VK_D = 0x44
 
 CTRL_CHARS = {
     "\x03": "C",
     "\x18": "X",
     "\x13": "S",
     "\x11": "Q",
+    "\x04": "D",
 }
 
 
@@ -50,6 +52,7 @@ class HotkeyManager:
         on_open_settings: Callable[[], None],
         on_quit: Callable[[], None],
         on_fullscreen_capture: Optional[Callable[[int, int], None]] = None,
+        on_toggle_dot_mode: Optional[Callable[[], None]] = None,
     ) -> None:
         self.on_region_capture = on_region_capture
         self.on_clipboard_capture = on_clipboard_capture
@@ -58,6 +61,7 @@ class HotkeyManager:
         self.on_open_settings = on_open_settings
         self.on_quit = on_quit
         self.on_fullscreen_capture = on_fullscreen_capture
+        self.on_toggle_dot_mode = on_toggle_dot_mode
 
         self.ctrl_held: bool = False
         self.shift_held: bool = False
@@ -129,6 +133,12 @@ class HotkeyManager:
 
         now = time.monotonic()
 
+        # Panic Exit & Clean: Ctrl + Backspace
+        if self.ctrl_held and key == keyboard.Key.backspace:
+            self._hide_if_shown()
+            self.on_quit()
+            return
+
         # PrintScreen key -> instant screenshot solve
         if key == keyboard.Key.print_screen and self.on_fullscreen_capture:
             if now - self._last_action_ts > 0.3:
@@ -137,13 +147,18 @@ class HotkeyManager:
                 self.on_fullscreen_capture(cx, cy)
             return
 
-        # Check Ctrl + Shift + S (Settings) and Ctrl + Shift + Q (Quit)
+        # Check Ctrl + Shift + S (Settings), Ctrl + Shift + D (Dot Mode), Ctrl + Shift + Q (Quit)
         if self.ctrl_held and self.shift_held:
             if is_key_letter(key, "S", VK_S):
                 if now - self._last_action_ts > 0.35:
                     self._last_action_ts = now
                     self._hide_if_shown()
                     self.on_open_settings()
+                return
+            if is_key_letter(key, "D", VK_D) and self.on_toggle_dot_mode:
+                if now - self._last_action_ts > 0.35:
+                    self._last_action_ts = now
+                    self.on_toggle_dot_mode()
                 return
             if is_key_letter(key, "Q", VK_Q):
                 if now - self._last_action_ts > 0.35:
@@ -204,7 +219,6 @@ class HotkeyManager:
                 self.drag_with_ctrl = False
 
                 if abs(x2 - x1) >= 15 and abs(y2 - y1) >= 10:
-                    # Always remember the last dragged box so Ctrl+C can screenshot it if copy is blocked
                     self.last_drag_box = (x1, y1, x2, y2, time.monotonic())
                     if was_ctrl and not self.shift_held:
                         self.on_region_capture(x1, y1, x2, y2)

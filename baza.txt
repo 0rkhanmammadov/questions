@@ -1,0 +1,13 @@
+# ===================================================================
+# LOKAL SUAL-CAVAB BAZASI (OFFLINE REJİM ÜÇÜN)
+# Əgər əlinizdə hazır sual-cavab siyahısı varsa, aşağıdakı formatda
+# bura yapışdırın. Proqram əvvəlcə buradan axtarır (0.01 saniyə, internetsiz),
+# tapmasa avtomatik AI-ya göndərir.
+# ===================================================================
+# Nümunə format:
+#
+# Azərbaycanın paytaxtı hansı şəhərdir?
+# Cavab: B
+# ---
+# 2 + 2 neçə edir?
+# * B) 4

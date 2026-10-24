@@ -159,3 +159,24 @@ def test_settings_window_build() -> None:
     finally:
         root.destroy()
 
+
+def test_local_db_and_dot_mode(tmp_path: Path) -> None:
+    from ai_client import format_with_dots
+    from local_db import search_local_db
+
+    db_file = tmp_path / "baza.txt"
+    db_file.write_text(
+        "14. Azərbaycanın paytaxtı hansı şəhərdir?\nCavab: B\n---\n15. 5 + 5 neçə edir?\n* C\n",
+        encoding="utf-8",
+    )
+    hit = search_local_db("14. Azərbaycanın paytaxtı hansı şəhərdir? A) Gəncə B) Bakı", db_file)
+    assert hit == "B"
+
+    hit2 = search_local_db("15. 5 + 5 neçə edir?", db_file)
+    assert hit2 == "C"
+
+    assert format_with_dots("14) B ✓✓", "dots_only") == "••"
+    assert format_with_dots("14) C ✓✓", "both") == "14) C (•••) ✓✓"
+    assert format_with_dots("14) B ✓✓", "off") == "14) B ✓✓"
+
+

@@ -11,5 +11,9 @@
   "ctrl_c_enabled": true,
   "flash_indicator_enabled": true,
   "tray_enabled": true,
+  "dual_ai_enabled": true,
+  "dot_mode": "off",
+  "history_enabled": true,
+  "local_db_enabled": true,
   "system_prompt": "QAYDA: Heç bir izahat, cümlə və ya söz YAZMA! Yalnız sualın nömrəsini (əgər varsa) və doğru variant hərfini və ya rəqəmləri yaz. Nümunə: '14) B' və ya '15) 1-2-3' və ya 'C'."
 }

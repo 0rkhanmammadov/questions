@@ -1,7 +1,7 @@
 import os
 import threading
 import tkinter as tk
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pyperclip
 import pystray
@@ -14,7 +14,7 @@ from capture import (
     enable_dpi_awareness,
     get_clipboard_text,
 )
-from config import load_config
+from config import load_config, save_config
 from hotkeys import HotkeyManager
 from overlay import StealthOverlay
 from settings_ui import SettingsWindow
@@ -34,6 +34,7 @@ class QuizAssistantApp:
         self.config: Dict[str, Any] = load_config()
         self._req_counter: int = 0
         self._last_solved_clipboard: str = get_clipboard_text()
+        self.answer_history: List[str] = []
         self._lock = threading.Lock()
 
         self.root = tk.Tk()
@@ -49,6 +50,7 @@ class QuizAssistantApp:
             on_open_settings=lambda: self.overlay.invoke_main(self.settings_ui.open_or_focus),
             on_quit=lambda: self.overlay.invoke_main(self.quit_app),
             on_fullscreen_capture=self.handle_fullscreen_capture,
+            on_toggle_dot_mode=lambda: self.overlay.invoke_main(self.toggle_dot_mode),
         )
         self.tray_icon: Optional[pystray.Icon] = None
 
@@ -62,6 +64,32 @@ class QuizAssistantApp:
             if self.overlay.status_state == "error":
                 self.overlay.status_state = "ready"
                 self.overlay.answer_text = ""
+
+    def toggle_dot_mode(self) -> None:
+        order = ["off", "both", "dots_only"]
+        curr = (self.config.get("dot_mode") or "off").lower()
+        nxt = order[(order.index(curr) + 1) % len(order)] if curr in order else "dots_only"
+        self.config["dot_mode"] = nxt
+        save_config(self.config)
+        labels = {"off": "Normal (14) B)", "both": "Hərf+Nöqtə (B ••)", "dots_only": "Yalnız Nöqtə (••)"}
+        self.overlay.set_answer(f"Rejim: {labels.get(nxt, nxt)}")
+
+    def _record_and_format_answer(self, ans: str) -> str:
+        dot_mode = (self.config.get("dot_mode") or "off").lower()
+        if dot_mode == "dots_only":
+            return ans
+
+        if not self.config.get("history_enabled", True):
+            return ans
+
+        with self._lock:
+            if not self.answer_history or self.answer_history[0] != ans:
+                self.answer_history.insert(0, ans)
+                self.answer_history = self.answer_history[:5]
+            if len(self.answer_history) == 1:
+                return ans
+            prev = "  |  ".join(self.answer_history[1:4])
+            return f"{ans}   [{prev}]"
 
     def _has_active_api_key(self) -> bool:
         prov = self.config.get("provider", "free").lower()
@@ -88,11 +116,11 @@ class QuizAssistantApp:
                         return
                     ans = solve_text(ocr_text, self.config)
                     if req_id == self._req_counter:
-                        self.overlay.set_answer(ans)
+                        self.overlay.set_answer(self._record_and_format_answer(ans))
                 else:
                     ans = solve_image(png_bytes, self.config)
                     if req_id == self._req_counter:
-                        self.overlay.set_answer(ans)
+                        self.overlay.set_answer(self._record_and_format_answer(ans))
             except AIClientError as e:
                 if req_id == self._req_counter:
                     self.overlay.set_error(str(e))
@@ -158,7 +186,7 @@ class QuizAssistantApp:
             try:
                 ans = solve_text(text, self.config)
                 if req_id == self._req_counter:
-                    self.overlay.set_answer(ans)
+                    self.overlay.set_answer(self._record_and_format_answer(ans))
             except AIClientError as e:
                 if req_id == self._req_counter:
                     self.overlay.set_error(str(e))
@@ -178,7 +206,7 @@ class QuizAssistantApp:
                 default=True,
             ),
             pystray.MenuItem(
-                "Çıxış (Ctrl+Shift+Q)",
+                "Təcili Çıxış (Ctrl+Backspace)",
                 lambda icon, item: self.overlay.invoke_main(self.quit_app),
             ),
         )
@@ -191,6 +219,14 @@ class QuizAssistantApp:
         threading.Thread(target=self.tray_icon.run, daemon=True).start()
 
     def quit_app(self) -> None:
+        try:
+            pyperclip.copy("")
+        except Exception:
+            pass
+        try:
+            self.answer_history.clear()
+        except Exception:
+            pass
         try:
             self.hotkeys.stop()
         except Exception:

@@ -1,34 +1,64 @@
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import io
 import json
 import random
 import re
+import ssl
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from PIL import Image, ImageOps
+
+from local_db import search_local_db
+
+DOT_MAP = {
+    "A": "•",
+    "B": "••",
+    "C": "•••",
+    "D": "••••",
+    "E": "•••••",
+}
 
 
 class AIClientError(Exception):
     pass
 
 
+def format_with_dots(ans: str, dot_mode: str = "off") -> str:
+    mode = (dot_mode or "off").lower()
+    if mode == "off" or not ans:
+        return ans
+
+    # Find standalone option letter A-E in answer like "14) B" or "B ✓✓"
+    m = re.search(r"\b([A-E])\b", ans)
+    if not m:
+        return ans
+    letter = m.group(1)
+    dots = DOT_MAP.get(letter, "")
+    if not dots:
+        return ans
+
+    if mode == "dots_only":
+        return dots
+    if mode == "both":
+        return ans.replace(letter, f"{letter} ({dots})", 1)
+    return ans
+
+
 def _urlopen_direct(req: urllib.request.Request, timeout: int = 20):
-    import ssl
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
     try:
-        # First try direct connection bypassing any restrictive Windows system proxy
         opener = urllib.request.build_opener(
             urllib.request.ProxyHandler({}),
             urllib.request.HTTPSHandler(context=ctx),
         )
         return opener.open(req, timeout=timeout)
     except Exception:
-        # Fallback to system default proxy if direct connection is not available
         opener_sys = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
         return opener_sys.open(req, timeout=timeout)
 
@@ -81,7 +111,6 @@ def _clean_answer(ans: str, question_text: str = "") -> str:
 
     q_num = _extract_question_num(question_text)
 
-    # Check if AI already returned "14) B" or "15) 1-2-3"
     m_prefixed = re.match(r"^(\d{1,3})\s*[\)\.\-:]\s*([A-Ea-e])\b", first_line)
     if m_prefixed:
         return f"{m_prefixed.group(1)}) {m_prefixed.group(2).upper()}"
@@ -92,13 +121,15 @@ def _clean_answer(ans: str, question_text: str = "") -> str:
         seq = re.sub(r"\s+", "", seq)
         return f"{m_num_seq.group(1)}) {seq}"
 
-    # Check if first line starts with option letter like "B) Bakı" or "Cavab: B" or just "B"
-    m_opt = re.search(r"(?:^|Cavab\s*[:\-]?\s*|Option\s*[:\-]?\s*|Variant\s*[:\-]?\s*)([A-Ea-e])(?:\s*[\)\.\-:]|\s*$)", first_line, flags=re.IGNORECASE)
+    m_opt = re.search(
+        r"(?:^|Cavab\s*[:\-]?\s*|Option\s*[:\-]?\s*|Variant\s*[:\-]?\s*)([A-Ea-e])(?:\s*[\)\.\-:]|\s*$)",
+        first_line,
+        flags=re.IGNORECASE,
+    )
     if m_opt:
         letter = m_opt.group(1).upper()
         return f"{q_num}) {letter}" if q_num else letter
 
-    # Check if it's a number sequence like "1-2-3" or "1, 2, 3"
     m_seq = re.match(r"^(\d+(?:\s*[-,]\s*\d+)+)$", first_line)
     if m_seq:
         seq = re.sub(r"\s*[,]\s*", "-", m_seq.group(1).strip())
@@ -142,20 +173,7 @@ def extract_text_from_image_bytes(image_bytes: bytes) -> str:
         raise AIClientError(f"OCR xətası: {str(e)[:60]}")
 
 
-def _solve_free_text(cleaned_q: str, system_prompt: str) -> str:
-    nonce = random.randint(1000000, 9999999)
-    strict_prompt = (
-        "QAYDA: Heç bir izahat, cümlə və ya söz YAZMA! "
-        "Yalnız sualın nömrəsini (əgər varsa) və doğru variant hərfini (A, B, C, D, E) və ya rəqəmləri yaz.\n"
-        "Nümunə formatlar:\n"
-        "14) B\n"
-        "15) 1-2-3\n"
-        "C\n\n"
-        f"Sual:\n{cleaned_q}\n\n"
-        "Cavab (yalnız hərf və ya rəqəm, izahatsız):"
-    )
-
-    # 1. Pure HTTP background call to Yqcloud GPT-4 endpoint (0 browser, 0 cooldown)
+def _query_binjie_once(strict_prompt: str, cleaned_q: str, nonce: int) -> Optional[str]:
     try:
         headers = {
             "accept": "application/json, text/plain, */*",
@@ -180,14 +198,16 @@ def _solve_free_text(cleaned_q: str, system_prompt: str) -> str:
             headers=headers,
             method="POST",
         )
-        with _urlopen_direct(req, timeout=15) as resp:
+        with _urlopen_direct(req, timeout=14) as resp:
             raw_ans = resp.read().decode("utf-8").strip()
             if raw_ans:
                 return _clean_answer(raw_ans, cleaned_q)
     except Exception:
-        pass
+        return None
+    return None
 
-    # 2. Pure HTTP fallback to Pollinations OpenAI endpoint
+
+def _query_pollinations_once(strict_prompt: str, system_prompt: str, cleaned_q: str, nonce: int) -> Optional[str]:
     url = "https://text.pollinations.ai/openai"
     headers = {"Content-Type": "application/json"}
     payload = {
@@ -199,21 +219,54 @@ def _solve_free_text(cleaned_q: str, system_prompt: str) -> str:
         ],
         "temperature": 0.1,
     }
-    for attempt in range(2):
-        try:
-            res = _post_json(url, payload, headers, timeout=25)
-            content = res["choices"][0]["message"]["content"]
+    try:
+        res = _post_json(url, payload, headers, timeout=14)
+        content = res["choices"][0]["message"]["content"]
+        if content:
             return _clean_answer(content, cleaned_q)
-        except AIClientError as e:
-            err_str = str(e)
-            m = re.search(r"Retry after (\d+)s", err_str)
-            if attempt == 0 and m:
-                wait_sec = min(int(m.group(1)) + 1, 25)
-                time.sleep(wait_sec)
-                continue
-            raise
-        except (KeyError, IndexError):
-            raise AIClientError("Cavab oxuna bilmədi")
+    except Exception:
+        return None
+    return None
+
+
+def _solve_free_text(cleaned_q: str, system_prompt: str, dual_ai: bool = False) -> str:
+    nonce = random.randint(1000000, 8999999)
+    strict_prompt = (
+        "QAYDA: Heç bir izahat, cümlə və ya söz YAZMA! "
+        "Yalnız sualın nömrəsini (əgər varsa) və doğru variant hərfini (A, B, C, D, E) və ya rəqəmləri yaz.\n"
+        "Nümunə formatlar:\n"
+        "14) B\n"
+        "15) 1-2-3\n"
+        "C\n\n"
+        f"Sual:\n{cleaned_q}\n\n"
+        "Cavab (yalnız hərf və ya rəqəm, izahatsız):"
+    )
+
+    if dual_ai:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            f1 = pool.submit(_query_binjie_once, strict_prompt, cleaned_q, nonce)
+            f2 = pool.submit(_query_pollinations_once, strict_prompt, system_prompt, cleaned_q, nonce + 1)
+            a1 = f1.result()
+            a2 = f2.result()
+
+        if a1 and a2:
+            if a1 == a2:
+                return f"{a1} ✓✓"
+            # Extract option tail from a2 (e.g. "14) C" -> "C")
+            a2_short = re.sub(r"^\d+\)\s*", "", a2).strip()
+            return f"{a1} / {a2_short}"
+        if a1:
+            return a1
+        if a2:
+            return a2
+    else:
+        a1 = _query_binjie_once(strict_prompt, cleaned_q, nonce)
+        if a1:
+            return a1
+        a2 = _query_pollinations_once(strict_prompt, system_prompt, cleaned_q, nonce)
+        if a2:
+            return a2
+
     raise AIClientError("Cavab alınmadı")
 
 
@@ -235,11 +288,22 @@ def solve_text(question_text: str, config: Dict[str, Any]) -> str:
     if not cleaned_q:
         raise AIClientError("Boş mətn")
 
+    dot_mode = config.get("dot_mode", "off")
+
+    # 1. Check Local Offline Database (baza.txt) first if enabled
+    if config.get("local_db_enabled", False):
+        local_hit = search_local_db(cleaned_q)
+        if local_hit:
+            ans = _clean_answer(local_hit, cleaned_q)
+            return format_with_dots(f"{ans} ★", dot_mode)
+
     provider = _effective_provider(config)
     system_prompt = config.get("system_prompt", "")
+    dual_ai = bool(config.get("dual_ai_enabled", False))
 
     if provider == "free":
-        return _solve_free_text(cleaned_q, system_prompt)
+        ans = _solve_free_text(cleaned_q, system_prompt, dual_ai=dual_ai)
+        return format_with_dots(ans, dot_mode)
 
     strict_user = (
         f"Sual:\n{cleaned_q}\n\n"
@@ -266,7 +330,8 @@ def solve_text(question_text: str, config: Dict[str, Any]) -> str:
         res = _post_json(url, payload, headers)
         try:
             content = res["choices"][0]["message"]["content"]
-            return _clean_answer(content, cleaned_q)
+            ans = _clean_answer(content, cleaned_q)
+            return format_with_dots(ans, dot_mode)
         except (KeyError, IndexError):
             raise AIClientError("OpenAI-dan cavab oxuna bilmədi")
     else:
@@ -283,7 +348,8 @@ def solve_text(question_text: str, config: Dict[str, Any]) -> str:
         try:
             parts = res["candidates"][0]["content"]["parts"]
             content = "".join(p.get("text", "") for p in parts)
-            return _clean_answer(content, cleaned_q)
+            ans = _clean_answer(content, cleaned_q)
+            return format_with_dots(ans, dot_mode)
         except (KeyError, IndexError):
             raise AIClientError("Gemini-dən cavab oxuna bilmədi")
 
@@ -294,12 +360,13 @@ def solve_image(image_bytes: bytes, config: Dict[str, Any]) -> str:
 
     provider = _effective_provider(config)
     system_prompt = config.get("system_prompt", "")
+    dot_mode = config.get("dot_mode", "off")
 
     if provider == "free":
         ocr_text = extract_text_from_image_bytes(image_bytes)
         if not ocr_text or len(ocr_text.strip()) < 2:
             raise AIClientError("Şəkildə mətn tapılmadı")
-        return _solve_free_text(ocr_text, system_prompt)
+        return solve_text(ocr_text, config)
 
     b64_img = base64.b64encode(image_bytes).decode("ascii")
     user_instruction = (
@@ -336,7 +403,8 @@ def solve_image(image_bytes: bytes, config: Dict[str, Any]) -> str:
         res = _post_json(url, payload, headers)
         try:
             content = res["choices"][0]["message"]["content"]
-            return _clean_answer(content)
+            ans = _clean_answer(content)
+            return format_with_dots(ans, dot_mode)
         except (KeyError, IndexError):
             raise AIClientError("OpenAI-dan cavab oxuna bilmədi")
     else:
@@ -365,7 +433,8 @@ def solve_image(image_bytes: bytes, config: Dict[str, Any]) -> str:
         try:
             parts = res["candidates"][0]["content"]["parts"]
             content = "".join(p.get("text", "") for p in parts)
-            return _clean_answer(content)
+            ans = _clean_answer(content)
+            return format_with_dots(ans, dot_mode)
         except (KeyError, IndexError):
             raise AIClientError("Gemini-dən cavab oxuna bilmədi")
 
