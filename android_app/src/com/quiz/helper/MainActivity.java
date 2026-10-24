@@ -2,6 +2,7 @@ package com.quiz.helper;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -32,7 +33,8 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private EditText urlInput;
-    private Button overlayBtn;
+    private Button accBtn;
+    private Button dotBtn;
     private TextView webOverlayBox;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
@@ -58,36 +60,45 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.parseColor("#121215"));
 
-        // Top Bar: Overlay Activator + URL Bar
+        // Top Bar: Accessibility Button + Dot Toggle Button + URL Bar
         LinearLayout topBar = new LinearLayout(this);
         topBar.setOrientation(LinearLayout.VERTICAL);
         topBar.setPadding(dp(8), dp(6), dp(8), dp(6));
         topBar.setBackgroundColor(Color.parseColor("#18181B"));
 
-        overlayBtn = new Button(this);
-        overlayBtn.setAllCaps(false);
-        overlayBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        overlayBtn.setTextColor(Color.WHITE);
-        GradientDrawable btnBg = new GradientDrawable();
-        btnBg.setColor(Color.parseColor("#2563EB"));
-        btnBg.setCornerRadius(dp(6));
-        overlayBtn.setBackground(btnBg);
-        overlayBtn.setPadding(dp(10), dp(6), dp(10), dp(6));
-        updateOverlayButtonLabel();
-
-        overlayBtn.setOnClickListener(new View.OnClickListener() {
+        // Button 1: Accessibility (Screen reader for Share & Cavabı Tap)
+        accBtn = new Button(this);
+        accBtn.setAllCaps(false);
+        accBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        accBtn.setTextColor(Color.WHITE);
+        accBtn.setPadding(dp(10), dp(6), dp(10), dp(6));
+        accBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                handleOverlayButtonClick();
+                handleAccButtonClick();
             }
         });
+        LinearLayout.LayoutParams accLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(38));
+        accLp.bottomMargin = dp(4);
+        topBar.addView(accBtn, accLp);
 
-        LinearLayout.LayoutParams overLp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                 dp(38)
-        );
-        overLp.bottomMargin = dp(6);
-        topBar.addView(overlayBtn, overLp);
+        // Button 2: Floating dot toggle (default: hidden)
+        dotBtn = new Button(this);
+        dotBtn.setAllCaps(false);
+        dotBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        dotBtn.setTextColor(Color.WHITE);
+        dotBtn.setPadding(dp(10), dp(6), dp(10), dp(6));
+        dotBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                handleDotButtonClick();
+            }
+        });
+        LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(36));
+        dotLp.bottomMargin = dp(6);
+        topBar.addView(dotBtn, dotLp);
 
         // URL row
         LinearLayout urlRow = new LinearLayout(this);
@@ -136,19 +147,20 @@ public class MainActivity extends Activity {
                 loadUserUrl();
             }
         });
-        urlRow.addView(goBtn, new LinearLayout.LayoutParams(dp(56), dp(36)));
+        urlRow.addView(goBtn, new LinearLayout.LayoutParams(dp(54), dp(36)));
 
         topBar.addView(urlRow);
-        root.addView(topBar, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        ));
+        root.addView(topBar);
 
-        // WebView + Stealth Answer Box container
-        FrameLayout webContainer = new FrameLayout(this);
+        // Frame: WebView + On-screen floating answer box for embedded web
+        FrameLayout contentFrame = new FrameLayout(this);
+        LinearLayout.LayoutParams frameLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.0f);
+        root.addView(contentFrame, frameLp);
+
         webView = new WebView(this);
         setupWebView();
-        webContainer.addView(webView, new FrameLayout.LayoutParams(
+        contentFrame.addView(webView, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
         ));
@@ -156,26 +168,22 @@ public class MainActivity extends Activity {
         webOverlayBox = new TextView(this);
         webOverlayBox.setTextColor(Color.parseColor("#4ADE80"));
         webOverlayBox.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        webOverlayBox.setPadding(dp(12), dp(6), dp(12), dp(6));
-        GradientDrawable toastBg = new GradientDrawable();
-        toastBg.setColor(Color.parseColor("#DD141417"));
-        toastBg.setCornerRadius(dp(8));
-        toastBg.setStroke(dp(1), Color.parseColor("#993F3F46"));
-        webOverlayBox.setBackground(toastBg);
+        webOverlayBox.setPadding(dp(14), dp(8), dp(14), dp(8));
+        GradientDrawable boxBg = new GradientDrawable();
+        boxBg.setColor(Color.parseColor("#EE18181B"));
+        boxBg.setCornerRadius(dp(8));
+        boxBg.setStroke(dp(1), Color.parseColor("#993F3F46"));
+        webOverlayBox.setBackground(boxBg);
         webOverlayBox.setVisibility(View.GONE);
 
-        FrameLayout.LayoutParams toastLp = new FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams boxLp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
         );
-        toastLp.gravity = Gravity.BOTTOM | Gravity.END;
-        toastLp.rightMargin = dp(14);
-        toastLp.bottomMargin = dp(14);
-        webContainer.addView(webOverlayBox, toastLp);
-
-        root.addView(webContainer, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.0f
-        ));
+        boxLp.gravity = Gravity.BOTTOM | Gravity.END;
+        boxLp.bottomMargin = dp(24);
+        boxLp.setMarginEnd(dp(16));
+        contentFrame.addView(webOverlayBox, boxLp);
 
         setContentView(root);
 
@@ -187,9 +195,10 @@ public class MainActivity extends Activity {
                 ".card{background:#18181b;border:1px solid #27272a;border-radius:10px;padding:16px;margin-bottom:14px;}" +
                 "h3{margin:0 0 8px 0;color:#4ade80;font-size:16px;}" +
                 "p{margin:0 0 8px 0;font-size:13px;color:#a1a1aa;}</style></head><body>" +
-                "<div class='card'><h3>✓ Hazırdır! Boş ekrana 2 dəfə barmaq vur!</h3>" +
-                "<p>1. <b>Daxili Brauzer:</b> Yuxarıda istənilən sayt ünvanını yazıb <b>Aç</b> bas. Həmin saytda <b>ekranın boş yerinə 2 dəfə barmaq vuranda</b> sualın cavabı sağ-aşağı küncdə çıxacaq.</p>" +
-                "<p>2. <b>Chrome Üstündə İşlətmək:</b> Yuxarıdakı mavi düyməyə basıb icazəni aç — Chrome-un üstündə kiçik <b>•</b> nöqtəsi yaranacaq.</p></div>" +
+                "<div class='card'><h3>✓ 100% Gizli Rejim (Qalereyasız!)</h3>" +
+                "<p>1. Yuxarıdakı <b>1-ci düymə</b> ilə 'Ekran Oxuyucu' xidmətini aktiv edin.</p>" +
+                "<p>2. Brauzerdə imtahanda olarkən: sualın mətni üstündə basıb saxlayın -> <b>'Cavabı Tap'</b> və ya <b>'Paylaş'</b> vurun. Arxa planda ekran oxunacaq və cavab çıxacaq!</p>" +
+                "<p>3. Qalereyaya girməyə ehtiyac yoxdur. Ekranda heç bir göy nöqtə də görünmür.</p></div>" +
                 "<div class='card'><h3>Yoxlamaq üçün bu ekranda boş yerə 2 dəfə vur:</h3>" +
                 "<p style='color:#fff;font-size:15px;'>14. Azərbaycanın paytaxtı hansı şəhərdir?<br>A) Gəncə &nbsp; B) Bakı &nbsp; C) Şəki &nbsp; D) Quba</p></div>" +
                 "</body></html>";
@@ -199,8 +208,81 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        updateOverlayButtonLabel();
-        startOverlayServiceSafely();
+        updateButtons();
+        boolean showDot = getSharedPreferences("quiz_prefs", MODE_PRIVATE).getBoolean("show_floating_dot", false);
+        if (showDot) {
+            startOverlayServiceSafely();
+        } else {
+            try {
+                stopService(new Intent(this, FloatingOverlayService.class));
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private void updateButtons() {
+        boolean hasAcc = ScreenReaderService.instance != null;
+        GradientDrawable accBg = new GradientDrawable();
+        accBg.setCornerRadius(dp(6));
+        if (hasAcc) {
+            accBg.setColor(Color.parseColor("#15803D"));
+            accBtn.setText("✓ 1. Ekran Oxuyucu Aktivdir (Cavabı Tap Hazır)");
+        } else {
+            accBg.setColor(Color.parseColor("#2563EB"));
+            accBtn.setText("1. Ekran Oxuyucunu Aktiv Et (Accessibility)");
+        }
+        accBtn.setBackground(accBg);
+
+        boolean showDot = getSharedPreferences("quiz_prefs", MODE_PRIVATE).getBoolean("show_floating_dot", false);
+        GradientDrawable dotBg = new GradientDrawable();
+        dotBg.setCornerRadius(dp(6));
+        if (showDot) {
+            dotBg.setColor(Color.parseColor("#D97706"));
+            dotBtn.setText("2. Ekranda Göy Nöqtə: AÇIQDIR (Toxun = Gizlət)");
+        } else {
+            dotBg.setColor(Color.parseColor("#27272A"));
+            dotBtn.setText("2. Ekranda Göy Nöqtə: GİZLİDİR (Toxun = Göstər)");
+        }
+        dotBtn.setBackground(dotBg);
+    }
+
+    private void handleAccButtonClick() {
+        if (ScreenReaderService.instance != null) {
+            Toast.makeText(this, "✓ Ekran oxuyucu aktivdir! Brauzerdə mətni seçib 'Cavabı Tap' və ya 'Paylaş' vurun.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Toast.makeText(this, "Məhdudiyyət varsa: Tətbiq haqqında -> ⋮ 3 nöqtə -> İcazə ver", Toast.LENGTH_LONG).show();
+        try {
+            Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+            startActivity(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, "Parametrlər açıla bilmədi", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void handleDotButtonClick() {
+        SharedPreferences prefs = getSharedPreferences("quiz_prefs", MODE_PRIVATE);
+        boolean current = prefs.getBoolean("show_floating_dot", false);
+        if (!current) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+                Toast.makeText(this, "Siyahıdan 'Sistem Köməkçisi' seçib icazə verin", Toast.LENGTH_LONG).show();
+                Intent intent = new Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName())
+                );
+                startActivity(intent);
+                return;
+            }
+            prefs.edit().putBoolean("show_floating_dot", true).apply();
+            startOverlayServiceSafely();
+            Toast.makeText(this, "Göy nöqtə aktiv edildi", Toast.LENGTH_SHORT).show();
+        } else {
+            prefs.edit().putBoolean("show_floating_dot", false).apply();
+            try {
+                stopService(new Intent(this, FloatingOverlayService.class));
+            } catch (Exception ignored) {}
+            Toast.makeText(this, "Göy nöqtə gizlədildi (Tam gizli)", Toast.LENGTH_SHORT).show();
+        }
+        updateButtons();
     }
 
     private void startOverlayServiceSafely() {
@@ -215,38 +297,6 @@ public class MainActivity extends Activity {
                 startService(intent);
             }
         } catch (Exception ignored) {}
-    }
-
-    private void updateOverlayButtonLabel() {
-        boolean canOverlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this);
-        boolean hasAcc = ScreenReaderService.instance != null;
-        if (!canOverlay) {
-            overlayBtn.setText("1. Chrome Üstündə • Nöqtə İcazəsini Aç");
-        } else if (!hasAcc) {
-            overlayBtn.setText("2. Chrome Ekran Oxuyucu İcazəsini Aç (Accessibility)");
-        } else {
-            overlayBtn.setText("✓ Chrome • Nöqtəsi Aktivdir (Yenilə)");
-        }
-    }
-
-    private void handleOverlayButtonClick() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "Siyahıdan 'Sistem Köməkçisi' seçib icazə verin", Toast.LENGTH_LONG).show();
-            Intent intent = new Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:" + getPackageName())
-            );
-            startActivity(intent);
-            return;
-        }
-        startOverlayServiceSafely();
-        if (ScreenReaderService.instance == null) {
-            Toast.makeText(this, "Endirilən xidmətlərdən 'Ekran Oxuyucu Köməkçi' aktiv edin", Toast.LENGTH_LONG).show();
-            Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
-            startActivity(intent);
-            return;
-        }
-        Toast.makeText(this, "✓ Üzən • nöqtə aktivdir! İndi Chrome-a keçə bilərsiniz.", Toast.LENGTH_SHORT).show();
     }
 
     private void loadUserUrl() {

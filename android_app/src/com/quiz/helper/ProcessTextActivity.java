@@ -39,71 +39,50 @@ public class ProcessTextActivity extends Activity {
                     sharedText = sharedText.replaceAll("(?i)https?://\\S+", "").trim();
                 }
                 final String cleanText = (sharedText != null) ? sharedText : "";
-
-                final ScreenReaderService reader = ScreenReaderService.instance;
-                if (reader != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                    showAnswerBanner("◌ Ekran oxunur...", 1200);
-                    reader.captureScreenshot(new ScreenReaderService.ScreenshotCallback() {
-                        @Override
-                        public void onScreenshot(byte[] jpegBytes) {
-                            if (jpegBytes != null && jpegBytes.length > 500) {
-                                AiSolver.solveImageAsync(jpegBytes, cleanText, new AiSolver.Callback() {
-                                    @Override
-                                    public void onResult(final String formattedAnswer) {
-                                        runOnUiThread(() -> deliverAnswer(formattedAnswer));
-                                    }
-                                });
-                            } else if (!cleanText.isEmpty()) {
-                                processTextQuestion(cleanText);
-                            } else {
-                                runOnUiThread(() -> deliverAnswer("✕ Ekran şəkli alına bilmədi"));
-                            }
-                        }
-                    });
-                    return;
-                }
-
-                if (!cleanText.isEmpty()) {
-                    processTextQuestion(cleanText);
-                    return;
-                }
+                captureAndSolve(cleanText);
+                return;
             }
         }
 
-        // Default: ACTION_PROCESS_TEXT
+        // Default: ACTION_PROCESS_TEXT ("Cavabı Tap" context menu)
         CharSequence text = intent != null ? intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT) : null;
         final String selectedText = text != null ? text.toString().replaceAll("(?i)https?://\\S+", "").trim() : "";
+        captureAndSolve(selectedText);
+    }
 
-        // If Accessibility service is active (Android 11+), capture full screen screenshot
+    private void captureAndSolve(final String textHint) {
         final ScreenReaderService reader = ScreenReaderService.instance;
         if (reader != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            showAnswerBanner("◌ Ekran oxunur...", 1200);
-            reader.captureScreenshot(new ScreenReaderService.ScreenshotCallback() {
-                @Override
-                public void onScreenshot(byte[] jpegBytes) {
-                    if (jpegBytes != null && jpegBytes.length > 500) {
-                        AiSolver.solveImageAsync(jpegBytes, selectedText, new AiSolver.Callback() {
-                            @Override
-                            public void onResult(final String formattedAnswer) {
-                                runOnUiThread(() -> deliverAnswer(formattedAnswer));
-                            }
-                        });
-                    } else if (!selectedText.isEmpty()) {
-                        processTextQuestion(selectedText);
-                    } else {
-                        runOnUiThread(() -> deliverAnswer("✕ Ekran şəkli alına bilmədi"));
+            // Delay 150ms so Chrome context menu / text selection toolbar dismisses cleanly
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                reader.captureScreenshot(new ScreenReaderService.ScreenshotCallback() {
+                    @Override
+                    public void onScreenshot(byte[] jpegBytes) {
+                        if (jpegBytes != null && jpegBytes.length > 500) {
+                            runOnUiThread(() -> showAnswerBanner("◌ Həll edilir...", 1200));
+                            AiSolver.solveImageAsync(jpegBytes, textHint, new AiSolver.Callback() {
+                                @Override
+                                public void onResult(final String formattedAnswer) {
+                                    runOnUiThread(() -> deliverAnswer(formattedAnswer));
+                                }
+                            });
+                        } else if (!textHint.isEmpty()) {
+                            processTextQuestion(textHint);
+                        } else {
+                            runOnUiThread(() -> deliverAnswer("✕ Ekran şəkli alına bilmədi"));
+                        }
                     }
-                }
-            });
+                });
+            }, 150);
             return;
         }
 
-        if (!selectedText.isEmpty()) {
-            processTextQuestion(selectedText);
+        if (!textHint.isEmpty()) {
+            processTextQuestion(textHint);
             return;
         }
 
-        Toast.makeText(this, "Mətn və ya şəkil tapılmadı", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Ekran Oxuyucu (Accessibility) icazəsini aktiv edin", Toast.LENGTH_LONG).show();
         finish();
     }
 

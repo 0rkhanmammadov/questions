@@ -179,8 +179,8 @@ public class AiSolver {
                     "5. Açıq sualdırsa: Birbaşa qısa cavab sözü və ya rəqəmi yaz.\n" +
                     "6. Qətiyyən heç bir izahat YAZMA. Yalnız tək və dəqiq cavab!";
 
-            if (hintText != null && !hintText.trim().isEmpty()) {
-                prompt += "\n\nQEYD: İstifadəçinin seçdiyi/fokuslandığı sual mətni budur:\n\"" + hintText.trim() + "\"\nŞəkildə bu sualı və onun variantlarını tapıb həll et.";
+            if (hintText != null && hintText.trim().length() > 6) {
+                prompt += "\n\n(Fokus sual: \"" + hintText.trim() + "\")\nEkrandakı bu sualı və bütün variantları oxuyub ən doğru cavabı tap.";
             }
 
             JSONObject textPart = new JSONObject();
