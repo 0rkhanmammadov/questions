@@ -40,8 +40,34 @@ public class ProcessTextActivity extends Activity {
 
         // Default: ACTION_PROCESS_TEXT
         CharSequence text = intent != null ? intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT) : null;
-        if (text != null && text.toString().trim().length() >= 3) {
-            processTextQuestion(text.toString().trim());
+        final String selectedText = text != null ? text.toString().trim() : "";
+
+        // If Accessibility service is active (Android 11+), capture full screen screenshot
+        final ScreenReaderService reader = ScreenReaderService.instance;
+        if (reader != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            showAnswerBanner("◌ Ekran oxunur...", 1200);
+            reader.captureScreenshot(new ScreenReaderService.ScreenshotCallback() {
+                @Override
+                public void onScreenshot(byte[] jpegBytes) {
+                    if (jpegBytes != null && jpegBytes.length > 500) {
+                        AiSolver.solveImageAsync(jpegBytes, new AiSolver.Callback() {
+                            @Override
+                            public void onResult(final String formattedAnswer) {
+                                runOnUiThread(() -> deliverAnswer(formattedAnswer));
+                            }
+                        });
+                    } else if (!selectedText.isEmpty()) {
+                        processTextQuestion(selectedText);
+                    } else {
+                        runOnUiThread(() -> deliverAnswer("✕ Ekran şəkli alına bilmədi"));
+                    }
+                }
+            });
+            return;
+        }
+
+        if (!selectedText.isEmpty()) {
+            processTextQuestion(selectedText);
             return;
         }
 
