@@ -105,47 +105,63 @@ def _extract_question_num(question_text: str) -> str:
 
 
 def _clean_answer(ans: str, question_text: str = "") -> str:
-    text = (ans or "").replace("**", "").replace("*", "").replace("✓", "").replace("✔", "").strip()
+    text = (ans or "").replace("**", "").replace("*", "").replace("`", "").replace("✓", "").replace("✔", "").strip()
     if not text:
         return ""
     # Reject anti-abuse / Chinese rate-limit spam messages
     if re.search(r"[\u4e00-\u9fff]", text) or "sorry," in text.lower() or "封禁" in text:
-        return ""
+        return "Xəta"
 
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     first_line = lines[0] if lines else text
 
-    q_num = _extract_question_num(question_text)
-
-    m_prefixed = re.match(r"^(\d{1,3})\s*[\)\.\-:]\s*([A-Ea-e])\b", first_line)
-    if m_prefixed:
-        return f"{m_prefixed.group(1)}) {m_prefixed.group(2).upper()}"
-
-    m_num_seq = re.match(r"^(\d{1,3})\s*[\)\.\-:]\s*(\d+(?:\s*[-,]\s*\d+)+)", first_line)
-    if m_num_seq:
-        seq = re.sub(r"\s*[,]\s*", "-", m_num_seq.group(2).strip())
-        seq = re.sub(r"\s+", "", seq)
-        return f"{m_num_seq.group(1)}) {seq}"
-
-    m_opt = re.search(
-        r"(?:^|Cavab\s*[:\-]?\s*|Option\s*[:\-]?\s*|Variant\s*[:\-]?\s*)([A-Ea-e])(?:\s*[\)\.\-:]|\s*$)",
+    # Strip prefixes like 'Doğru cavab:', 'Cavab:', 'Doğru variant:', 'Answer:'
+    first_line = re.sub(
+        r"^(?:Düzgün\s+cavab|Doğru\s+cavab|Cavab|Doğru\s+variant|Answer|Correct\s+answer)\s*[:\-]\s*",
+        "",
         first_line,
         flags=re.IGNORECASE,
-    )
-    if m_opt:
-        letter = m_opt.group(1).upper()
+    ).strip()
+
+    q_num = _extract_question_num(question_text)
+
+    # Check for question number inside the answer itself like "14) B" or "14. B" or "14: B"
+    m_ans_qnum = re.match(r"^(\d{1,3})\s*[\)\.:]\s*(.+)$", first_line)
+    if m_ans_qnum:
+        ans_num = m_ans_qnum.group(1)
+        ans_body = m_ans_qnum.group(2).strip()
+        m_body_opt = re.match(r"^([A-Ea-e])(?:\s*[\)\.\-:]|\s*$)", ans_body)
+        if m_body_opt:
+            return f"{ans_num}) {m_body_opt.group(1).upper()}"
+        if re.match(r"^\d+(?:\s*[,;\-\s]\s*\d+)+$", ans_body):
+            nums = "-".join(re.findall(r"\d+", ans_body))
+            return f"{ans_num}) {nums}"
+        return f"{ans_num}) {ans_body[:50]}"
+
+    # Single option letter: A, B, C, D, E
+    if re.match(r"^[A-Ea-e]$", first_line):
+        letter = first_line.upper()
         return f"{q_num}) {letter}" if q_num else letter
 
-    m_seq = re.match(r"^(\d+(?:\s*[-,]\s*\d+)+)$", first_line)
-    if m_seq:
-        seq = re.sub(r"\s*[,]\s*", "-", m_seq.group(1).strip())
-        seq = re.sub(r"\s+", "", seq)
-        return f"{q_num}) {seq}" if q_num else seq
+    # Multi-letter like A, C, D or A-C-D
+    if re.match(r"^[A-Ea-e](?:\s*[,;\-\s]\s*[A-Ea-e])+$", first_line):
+        letters = ", ".join([x.upper() for x in re.findall(r"[A-Ea-e]", first_line)])
+        return f"{q_num}) {letters}" if q_num else letters
 
-    cleaned = first_line[:45].strip()
-    if q_num and not cleaned.startswith(f"{q_num})"):
-        return f"{q_num}) {cleaned}"
-    return cleaned
+    # Multi-number like 1, 2, 4 or 1-3-5
+    if re.match(r"^\d+(?:\s*[,;\-\s]\s*\d+)+$", first_line):
+        nums = "-".join(re.findall(r"\d+", first_line))
+        return f"{q_num}) {nums}" if q_num else nums
+
+    # Matching format like 1-a, 2-c, 3-b
+    if re.search(r"\b\d+\s*[\-:]\s*[A-Za-z]", first_line):
+        return f"{q_num}) {first_line[:50]}" if q_num and not first_line.startswith(f"{q_num})") else first_line[:50]
+
+    # Short direct text (e.g. 'Prosessor' or '2-ci variant')
+    short = first_line[:50].strip()
+    if q_num and not short.startswith(f"{q_num})"):
+        return f"{q_num}) {short}"
+    return short
 
 
 def extract_text_from_image_bytes(image_bytes: bytes) -> str:
@@ -351,16 +367,24 @@ def solve_text(question_text: str, config: Dict[str, Any]) -> str:
         payload = {
             "systemInstruction": {"parts": [{"text": system_prompt}]},
             "contents": [{"parts": [{"text": strict_user}]}],
-            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 50},
+            "generationConfig": {"temperature": 0.0, "maxOutputTokens": 300},
         }
         res = _post_json(url, payload, headers)
         try:
-            parts = res["candidates"][0]["content"]["parts"]
-            content = "".join(p.get("text", "") for p in parts)
+            candidates = res.get("candidates") or []
+            if not candidates:
+                raise AIClientError("Gemini cavab qaytarmadı")
+            content_obj = candidates[0].get("content") or {}
+            parts = content_obj.get("parts") or []
+            content = "".join(p.get("text", "") for p in parts if isinstance(p, dict)).strip()
+            if not content:
+                raise AIClientError("Gemini boş cavab qaytardı")
             ans = _clean_answer(content, cleaned_q)
             return format_with_dots(ans, dot_mode)
-        except (KeyError, IndexError):
-            raise AIClientError("Gemini-dən cavab oxuna bilmədi")
+        except AIClientError:
+            raise
+        except Exception as e:
+            raise AIClientError(f"Gemini-dən cavab oxuna bilmədi: {e}")
 
 
 def solve_image(image_bytes: bytes, config: Dict[str, Any]) -> str:
@@ -379,8 +403,14 @@ def solve_image(image_bytes: bytes, config: Dict[str, Any]) -> str:
 
     b64_img = base64.b64encode(image_bytes).decode("ascii")
     user_instruction = (
-        "Bu şəkildəki sualı oxu. Heç bir izahat yazma! "
-        "Yalnız sualın nömrəsini (varsa) və doğru cavab hərfini və ya rəqəmləri yaz (məsələn: '14) B' və ya '15) 1-2-3')."
+        "Sən ali dərəcəli imtahan və test ekspertisən. Şəkildəki sualı və variantları diqqətlə oxu, ən doğru cavabı tap.\n"
+        "QAYDALAR:\n"
+        "1. Variant hərfləri (A, B, C, D, E) varsa: Yalnız sual nömrəsini (varsa) və variant hərfini yaz (məs: '14) B' və ya 'B').\n"
+        "2. Variant hərfləri yoxdursa: Sual nömrəsini (varsa) və doğru variantın mətnini yaz (məs: '14) Prosessor' və ya 'Prosessor').\n"
+        "3. Çoxseçimlidirsə (məs. 3 doğru cavab): Bütün doğru bəndləri ardıcıl yaz (məs: '1, 2, 4' və ya '14) 1, 2, 4' və ya 'A, C, D').\n"
+        "4. Uyğunluqdursa: '1-a, 2-c, 3-b' kimi yaz.\n"
+        "5. Açıq sualdırsa: Birbaşa qısa cavab sözü və ya rəqəmi yaz.\n"
+        "6. Qətiyyən izahat yazma. Yalnız cavab!"
     )
 
     if provider == "openai":
@@ -439,16 +469,24 @@ def solve_image(image_bytes: bytes, config: Dict[str, Any]) -> str:
                     ]
                 }
             ],
-            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 50},
+            "generationConfig": {"temperature": 0.0, "maxOutputTokens": 300},
         }
         res = _post_json(url, payload, headers)
         try:
-            parts = res["candidates"][0]["content"]["parts"]
-            content = "".join(p.get("text", "") for p in parts)
+            candidates = res.get("candidates") or []
+            if not candidates:
+                raise AIClientError("Gemini cavab qaytarmadı")
+            content_obj = candidates[0].get("content") or {}
+            parts = content_obj.get("parts") or []
+            content = "".join(p.get("text", "") for p in parts if isinstance(p, dict)).strip()
+            if not content:
+                raise AIClientError("Gemini şəkildən sual tapmadı")
             ans = _clean_answer(content)
             return format_with_dots(ans, dot_mode)
-        except (KeyError, IndexError):
-            raise AIClientError("Gemini-dən cavab oxuna bilmədi")
+        except AIClientError:
+            raise
+        except Exception as e:
+            raise AIClientError(f"Gemini-dən cavab oxuna bilmədi: {e}")
 
 
 def test_connection(config: Dict[str, Any]) -> Tuple[bool, str]:

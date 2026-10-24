@@ -46,16 +46,30 @@ public class ScreenReaderService extends AccessibilityService {
                 takeScreenshot(android.view.Display.DEFAULT_DISPLAY, getMainExecutor(), new TakeScreenshotCallback() {
                     @Override
                     public void onSuccess(ScreenshotResult screenshot) {
+                        android.hardware.HardwareBuffer hb = null;
                         try {
-                            android.graphics.Bitmap bitmap = android.graphics.Bitmap.wrapHardwareBuffer(
-                                    screenshot.getHardwareBuffer(), screenshot.getColorSpace());
-                            if (bitmap != null) {
-                                java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-                                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, baos);
-                                cb.onScreenshot(baos.toByteArray());
-                                return;
+                            hb = screenshot.getHardwareBuffer();
+                            android.graphics.Bitmap hwBitmap = android.graphics.Bitmap.wrapHardwareBuffer(
+                                    hb, screenshot.getColorSpace());
+                            if (hwBitmap != null) {
+                                android.graphics.Bitmap swBitmap = hwBitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, false);
+                                if (swBitmap != null) {
+                                    java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                                    swBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, baos);
+                                    swBitmap.recycle();
+                                    hwBitmap.recycle();
+                                    if (hb != null) hb.close();
+                                    cb.onScreenshot(baos.toByteArray());
+                                    return;
+                                }
+                                hwBitmap.recycle();
                             }
                         } catch (Exception ignored) {}
+                        finally {
+                            if (hb != null) {
+                                try { hb.close(); } catch (Exception ignored) {}
+                            }
+                        }
                         cb.onScreenshot(null);
                     }
 

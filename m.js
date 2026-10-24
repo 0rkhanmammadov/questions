@@ -82,36 +82,52 @@
   }
 
   function cleanAnswer(raw, qText) {
-    const text = (raw || "").replace(/\*/g, "").replace(/[✓✔]/g, "").trim();
+    let text = (raw || "").replace(/\*/g, "").replace(/`/g, "").replace(/[✓✔]/g, "").trim();
     if (/[\\u4e00-\\u9fff]/.test(text) || text.toLowerCase().includes("sorry,") || text.includes("封禁")) {
       return "Xəta";
     }
     const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const first = lines[0] || text;
+    let first = lines[0] || text;
+    first = first.replace(/^(?:Düzgün\s+cavab|Doğru\s+cavab|Cavab|Doğru\s+variant|Answer|Correct\s+answer)\s*[:\-]\s*/i, "").trim();
+
     const qNum = extractQuestionNum(qText);
 
-    const mPref = first.match(/^(\d{1,3})\s*[\)\.\-:]\s*([A-Ea-e])\b/);
-    if (mPref) return `${mPref[1]}) ${mPref[2].toUpperCase()}`;
-
-    const mSeqPref = first.match(/^(\d{1,3})\s*[\)\.\-:]\s*(\d+(?:\s*[-,]\s*\d+)+)/);
-    if (mSeqPref) {
-      const seq = mSeqPref[2].replace(/\s*,\s*/g, "-").replace(/\s+/g, "");
-      return `${mSeqPref[1]}) ${seq}`;
+    const mAnsQNum = first.match(/^(\d{1,3})\s*[\)\.:]\s*(.+)$/);
+    if (mAnsQNum) {
+      const ansNum = mAnsQNum[1];
+      const ansBody = mAnsQNum[2].trim();
+      const mBodyOpt = ansBody.match(/^([A-Ea-e])(?:\s*[\)\.\-:]|\s*$)/);
+      if (mBodyOpt) {
+        return `${ansNum}) ${mBodyOpt[1].toUpperCase()}`;
+      }
+      if (/^\d+(?:\s*[,;\-\s]\s*\d+)+$/.test(ansBody)) {
+        const nums = (ansBody.match(/\d+/g) || []).join("-");
+        return `${ansNum}) ${nums}`;
+      }
+      return `${ansNum}) ${ansBody.slice(0, 45).trim()}`;
     }
 
-    const mOpt = first.match(/(?:^|Cavab\s*[:\-]?\s*|Variant\s*[:\-]?\s*)([A-Ea-e])(?:\s*[\)\.\-:]|\s*$)/i);
-    if (mOpt) {
-      const letter = mOpt[1].toUpperCase();
+    if (/^[A-Ea-e]$/.test(first)) {
+      const letter = first.toUpperCase();
       return qNum ? `${qNum}) ${letter}` : letter;
     }
 
-    const mSeq = first.match(/^(\d+(?:\s*[-,]\s*\d+)+)$/);
-    if (mSeq) {
-      const seq = mSeq[1].replace(/\s*,\s*/g, "-").replace(/\s+/g, "");
-      return qNum ? `${qNum}) ${seq}` : seq;
+    if (/^[A-Ea-e](?:\s*[,;\-\s]\s*[A-Ea-e])+$/.test(first)) {
+      const letters = (first.match(/[A-Ea-e]/g) || []).map(x => x.toUpperCase()).join(", ");
+      return qNum ? `${qNum}) ${letters}` : letters;
     }
 
-    const short = first.slice(0, 40).trim();
+    if (/^\d+(?:\s*[,;\-\s]\s*\d+)+$/.test(first)) {
+      const nums = (first.match(/\d+/g) || []).join("-");
+      return qNum ? `${qNum}) ${nums}` : nums;
+    }
+
+    if (/\b\d+\s*[\-:]\s*[A-Za-z]/.test(first)) {
+      const matchStr = first.slice(0, 45).trim();
+      return qNum && !matchStr.startsWith(`${qNum})`) ? `${qNum}) ${matchStr}` : matchStr;
+    }
+
+    const short = first.slice(0, 45).trim();
     return qNum && !short.startsWith(`${qNum})`) ? `${qNum}) ${short}` : short;
   }
 
@@ -139,11 +155,12 @@
         headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY },
         body: JSON.stringify({
           contents: [{ parts: [{ text: promptText }] }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 50 },
+          generationConfig: { temperature: 0.0, maxOutputTokens: 300 },
         }),
       });
       const data = await res.json();
-      const txt = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      const parts = data?.candidates?.[0]?.content?.parts || [];
+      const txt = parts.map((p) => p?.text || "").join("").trim();
       return txt ? cleanAnswer(txt, qText) : null;
     } catch (e) {
       return null;
@@ -212,10 +229,16 @@
 
     const nonce = Math.floor(1000000 + Math.random() * 8999999);
     const strictPrompt =
-      "QAYDA: Heç bir izahat, cümlə və ya söz YAZMA! " +
-      "Yalnız sualın nömrəsini (əgər varsa) və doğru variant hərfini (A, B, C, D, E) və ya rəqəmləri yaz.\n" +
-      "Nümunə formatlar:\n14) B\n15) 1-2-3\nC\n\n" +
-      `Sual:\n${q.slice(0, 1800)}\n\nCavab (yalnız hərf/rəqəm):`;
+      "Sən ali dərəcəli imtahan və test ekspertisən.\n" +
+      "Sualı və variantları diqqətlə oxu, dərindən düşün və ən doğru cavabı tap.\n\n" +
+      "QAYDALAR:\n" +
+      "1. Sualda A, B, C, D, E variantları varsa: Yalnız sualın nömrəsini (əgər varsa) və doğru variant hərfini yaz (Məs: 14) B və ya B).\n" +
+      "2. Variant hərfləri yoxdursa: Doğru variantın mətnini qısa və dəqiq yaz (Məs: 14) Prosessor və ya Prosessor).\n" +
+      "3. Çoxseçimlidirsə (məs. 3 doğru cavab): Bütün doğru variantları/nömrələri ardıcıl yaz (Məs: 1, 2, 4 və ya 14) 1, 2, 4 və ya A, C, D).\n" +
+      "4. Uyğunluqdursa: '1-a, 2-c, 3-b' kimi yaz.\n" +
+      "5. Açıq sualdırsa: Birbaşa qısa cavab sözü və ya rəqəmi yaz.\n" +
+      "6. Qətiyyən izahat yazma. Yalnız cavab!\n\n" +
+      `Sual:\n${q.slice(0, 1800)}\n\nCavab:`;
 
     try {
       const gAns = await queryGemini(strictPrompt, q);

@@ -48,11 +48,16 @@ public class AiSolver {
                 final String trimmedQ = q.length() > 2000 ? q.substring(0, 2000) : q;
                 final int nonce = 1000000 + new Random().nextInt(8999999);
                 final String strictPrompt =
-                        "QAYDA: Heç bir izahat, cümlə və ya söz YAZMA! " +
-                        "Yalnız və yalnız cari TƏK BİR sualın nömrəsini (əgər varsa) və doğru variant hərfini (A, B, C, D, E) və ya rəqəmləri yaz.\n" +
-                        "BİR NEÇƏ SUAL YAZMA! Yalnız 1 tək sual!\n" +
-                        "Nümunə: 14) B və ya 15) 1-2-3\n\n" +
-                        "Sual:\n" + trimmedQ + "\n\nCavab (yalnız 1 sual):";
+                        "Sən ali dərəcəli imtahan və test ekspertisən.\n" +
+                        "Sualı və variantları diqqətlə oxu, dərindən düşün və ən doğru cavabı tap.\n\n" +
+                        "QAYDALAR:\n" +
+                        "1. Sualda A, B, C, D, E variantları varsa: Yalnız sualın nömrəsini (əgər varsa) və doğru variant hərfini yaz (Məsələn: 14) B və ya B).\n" +
+                        "2. Variant hərfləri yoxdursa (yalnız mətn variantlarıdırsa): Doğru variantın mətnini qısa və dəqiq yaz (Məsələn: 14) Prosessor və ya Prosessor).\n" +
+                        "3. Çoxseçimlidirsə (birdən çox doğru cavab varsa, məsələn 3 doğru cavab): Bütün doğru variantları/nömrələri ardıcıl yaz (Məsələn: 1, 2, 4 və ya 14) 1, 2, 4 və ya A, C, D).\n" +
+                        "4. Uyğunluqdursa: '1-a, 2-c, 3-b' kimi yaz.\n" +
+                        "5. Açıq sualdırsa: Birbaşa qısa cavab sözü və ya rəqəmi yaz.\n" +
+                        "6. QƏTİYYƏN heç bir izahat və ya əlavə cümlə YAZMA. Yalnız tək və dəqiq cavab!\n\n" +
+                        "Sual:\n" + trimmedQ + "\n\nCavab:";
 
                 String gAns = queryGemini(strictPrompt, trimmedQ);
                 if (gAns != null && !gAns.equals("Xəta")) {
@@ -158,7 +163,14 @@ public class AiSolver {
             conn.setDoOutput(true);
 
             JSONObject textPart = new JSONObject();
-            textPart.put("text", "QAYDA: Şəkildəki cari TƏK BİR sualın nömrəsini və doğru variant hərfini yaz (məsələn: 14) B və ya 15) 1-2-3). YALNIZ 1 SUAL! Bir neçə sual yazma. İzahat yazma.");
+            textPart.put("text", "Sən ali dərəcəli imtahan və test ekspertisən. Şəkildəki sualı və variantları diqqətlə oxu, ən doğru cavabı tap.\n\n" +
+                    "QAYDALAR:\n" +
+                    "1. Sualda A, B, C, D, E variantları varsa: Yalnız sualın nömrəsini (əgər varsa) və doğru variant hərfini yaz (məs: 14) B və ya B).\n" +
+                    "2. Variant hərfləri yoxdursa: Doğru variantın mətnini qısa və dəqiq yaz (məs: 14) Prosessor və ya Prosessor).\n" +
+                    "3. Çoxseçimlidirsə (məs. 3 doğru cavab): Bütün doğru variantları/nömrələri ardıcıl yaz (məs: 1, 2, 4 və ya 14) 1, 2, 4 və ya A, C, D).\n" +
+                    "4. Uyğunluqdursa: '1-a, 2-c, 3-b' kimi yaz.\n" +
+                    "5. Açıq sualdırsa: Birbaşa qısa cavab sözü və ya rəqəmi yaz.\n" +
+                    "6. Qətiyyən heç bir izahat YAZMA. Yalnız tək və dəqiq cavab!");
 
             JSONObject inlineData = new JSONObject();
             inlineData.put("mimeType", "image/jpeg");
@@ -179,8 +191,8 @@ public class AiSolver {
             JSONObject body = new JSONObject();
             body.put("contents", contents);
             JSONObject genConfig = new JSONObject();
-            genConfig.put("temperature", 0.1);
-            genConfig.put("maxOutputTokens", 40);
+            genConfig.put("temperature", 0.0);
+            genConfig.put("maxOutputTokens", 300);
             body.put("generationConfig", genConfig);
 
             byte[] out = body.toString().getBytes(StandardCharsets.UTF_8);
@@ -196,13 +208,18 @@ public class AiSolver {
                 }
             }
             JSONObject data = new JSONObject(resp.toString());
-            String text = data.getJSONArray("candidates")
-                    .getJSONObject(0)
-                    .getJSONObject("content")
-                    .getJSONArray("parts")
-                    .getJSONObject(0)
-                    .getString("text");
-            return text == null || text.trim().isEmpty() ? null : cleanAnswer(text, "");
+            JSONArray candidates = data.optJSONArray("candidates");
+            if (candidates == null || candidates.length() == 0) return null;
+            JSONObject contentObj = candidates.getJSONObject(0).optJSONObject("content");
+            if (contentObj == null) return null;
+            JSONArray partsArray = contentObj.optJSONArray("parts");
+            if (partsArray == null || partsArray.length() == 0) return null;
+            StringBuilder sbText = new StringBuilder();
+            for (int i = 0; i < partsArray.length(); i++) {
+                sbText.append(partsArray.getJSONObject(i).optString("text", ""));
+            }
+            String rawText = sbText.toString().trim();
+            return rawText.isEmpty() ? null : cleanAnswer(rawText, "");
         } catch (Exception e) {
             return null;
         } finally {
@@ -234,6 +251,10 @@ public class AiSolver {
 
             JSONObject body = new JSONObject();
             body.put("contents", contents);
+            JSONObject genConfig = new JSONObject();
+            genConfig.put("temperature", 0.0);
+            genConfig.put("maxOutputTokens", 300);
+            body.put("generationConfig", genConfig);
 
             byte[] out = body.toString().getBytes(StandardCharsets.UTF_8);
             try (OutputStream os = conn.getOutputStream()) {
@@ -248,13 +269,18 @@ public class AiSolver {
                 }
             }
             JSONObject data = new JSONObject(resp.toString());
-            String text = data.getJSONArray("candidates")
-                    .getJSONObject(0)
-                    .getJSONObject("content")
-                    .getJSONArray("parts")
-                    .getJSONObject(0)
-                    .getString("text");
-            return text == null || text.trim().isEmpty() ? null : cleanAnswer(text, qText);
+            JSONArray candidates = data.optJSONArray("candidates");
+            if (candidates == null || candidates.length() == 0) return null;
+            JSONObject contentObj = candidates.getJSONObject(0).optJSONObject("content");
+            if (contentObj == null) return null;
+            JSONArray partsArray = contentObj.optJSONArray("parts");
+            if (partsArray == null || partsArray.length() == 0) return null;
+            StringBuilder sbText = new StringBuilder();
+            for (int i = 0; i < partsArray.length(); i++) {
+                sbText.append(partsArray.getJSONObject(i).optString("text", ""));
+            }
+            String text = sbText.toString().trim();
+            return text.isEmpty() ? null : cleanAnswer(text, qText);
         } catch (Exception e) {
             return null;
         } finally {
@@ -364,7 +390,7 @@ public class AiSolver {
     }
 
     public static String cleanAnswer(String raw, String qText) {
-        String text = (raw == null ? "" : raw).replace("*", "").replace("✓", "").replace("✔", "").trim();
+        String text = (raw == null ? "" : raw).replace("*", "").replace("`", "").replace("✓", "").replace("✔", "").trim();
         if (text.matches("(?s).*[\\u4e00-\\u9fff].*") || text.contains("sorry,") || text.contains("封禁")) {
             return "Xəta";
         }
@@ -376,32 +402,68 @@ public class AiSolver {
                 break;
             }
         }
+        // Strip prefixes like "Doğru cavab:", "Cavab:"
+        first = first.replaceAll("(?i)^(?:Düzgün\\s+cavab|Doğru\\s+cavab|Cavab|Doğru\\s+variant|Answer|Correct\\s+answer)\\s*[:\\-]\\s*", "").trim();
+
         String qNum = extractQuestionNum(qText);
 
-        Matcher mPref = Pattern.compile("^(\\d{1,3})\\s*[\\)\\.\\-:]\\s*([A-Ea-e])\\b").matcher(first);
-        if (mPref.find()) {
-            return mPref.group(1) + ") " + mPref.group(2).toUpperCase();
+        // Numbered answer like "14) B" or "14. Prosessor"
+        Matcher mAnsQNum = Pattern.compile("^(\\d{1,3})\\s*[\\)\\.:]\\s*(.+)$").matcher(first);
+        if (mAnsQNum.find()) {
+            String ansNum = mAnsQNum.group(1);
+            String ansBody = mAnsQNum.group(2).trim();
+            Matcher mBodyOpt = Pattern.compile("^([A-Ea-e])(?:\\s*[\\)\\.\\-:]|\\s*$)").matcher(ansBody);
+            if (mBodyOpt.find()) {
+                return ansNum + ") " + mBodyOpt.group(1).toUpperCase();
+            }
+            if (ansBody.matches("^\\d+(?:\\s*[,;\\-\\s]\\s*\\d+)+$")) {
+                Matcher mn = Pattern.compile("\\d+").matcher(ansBody);
+                StringBuilder sbN = new StringBuilder();
+                while (mn.find()) {
+                    if (sbN.length() > 0) sbN.append("-");
+                    sbN.append(mn.group());
+                }
+                return ansNum + ") " + sbN.toString();
+            }
+            String shortBody = ansBody.length() > 45 ? ansBody.substring(0, 45).trim() : ansBody;
+            return ansNum + ") " + shortBody;
         }
 
-        Matcher mSeqPref = Pattern.compile("^(\\d{1,3})\\s*[\\)\\.\\-:]\\s*(\\d+(?:\\s*[-,]\\s*\\d+)+)").matcher(first);
-        if (mSeqPref.find()) {
-            String seq = mSeqPref.group(2).replaceAll("\\s*,\\s*", "-").replaceAll("\\s+", "");
-            return mSeqPref.group(1) + ") " + seq;
-        }
-
-        Matcher mOpt = Pattern.compile("(?:^|Cavab\\s*[:\\-]?\\s*|Variant\\s*[:\\-]?\\s*)([A-Ea-e])(?:\\s*[\\)\\.\\-:]|\\s*$)", Pattern.CASE_INSENSITIVE).matcher(first);
-        if (mOpt.find()) {
-            String letter = mOpt.group(1).toUpperCase();
+        // Single letter A, B, C, D, E
+        if (first.matches("^[A-Ea-e]$")) {
+            String letter = first.toUpperCase();
             return !qNum.isEmpty() ? qNum + ") " + letter : letter;
         }
 
-        Matcher mSeq = Pattern.compile("^(\\d+(?:\\s*[-,]\\s*\\d+)+)$").matcher(first);
-        if (mSeq.find()) {
-            String seq = mSeq.group(1).replaceAll("\\s*,\\s*", "-").replaceAll("\\s+", "");
-            return !qNum.isEmpty() ? qNum + ") " + seq : seq;
+        // Multi-letter like A, C, D or A-C-D
+        if (first.matches("^[A-Ea-e](?:\\s*[,;\\-\\s]\\s*[A-Ea-e])+$")) {
+            Matcher ml = Pattern.compile("[A-Ea-e]").matcher(first);
+            StringBuilder sbL = new StringBuilder();
+            while (ml.find()) {
+                if (sbL.length() > 0) sbL.append(", ");
+                sbL.append(ml.group().toUpperCase());
+            }
+            return !qNum.isEmpty() ? qNum + ") " + sbL.toString() : sbL.toString();
         }
 
-        String shortAns = first.length() > 38 ? first.substring(0, 38).trim() : first;
+        // Multi-number like 1, 2, 4 or 1-3-5
+        if (first.matches("^\\d+(?:\\s*[,;\\-\\s]\\s*\\d+)+$")) {
+            Matcher mn = Pattern.compile("\\d+").matcher(first);
+            StringBuilder sbN = new StringBuilder();
+            while (mn.find()) {
+                if (sbN.length() > 0) sbN.append("-");
+                sbN.append(mn.group());
+            }
+            return !qNum.isEmpty() ? qNum + ") " + sbN.toString() : sbN.toString();
+        }
+
+        // Matching like 1-a, 2-c, 3-b
+        if (Pattern.compile("\\b\\d+\\s*[\\-:]\\s*[A-Za-z]").matcher(first).find()) {
+            String matchStr = first.length() > 45 ? first.substring(0, 45).trim() : first;
+            return (!qNum.isEmpty() && !matchStr.startsWith(qNum + ")")) ? qNum + ") " + matchStr : matchStr;
+        }
+
+        String shortAns = first.length() > 45 ? first.substring(0, 45).trim() : first;
         if (!qNum.isEmpty() && !shortAns.startsWith(qNum + ")")) {
             return qNum + ") " + shortAns;
         }
