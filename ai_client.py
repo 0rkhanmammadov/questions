@@ -342,9 +342,12 @@ def solve_text(question_text: str, config: Dict[str, Any]) -> str:
             raise AIClientError("OpenAI-dan cavab oxuna bilmədi")
     else:
         api_key = (config.get("gemini_api_key") or "").strip()
-        model = config.get("gemini_model", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+        model = config.get("gemini_model", "gemini-3.5-flash-lite").strip() or "gemini-3.5-flash-lite"
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key,
+        }
         payload = {
             "systemInstruction": {"parts": [{"text": system_prompt}]},
             "contents": [{"parts": [{"text": strict_user}]}],
@@ -415,9 +418,12 @@ def solve_image(image_bytes: bytes, config: Dict[str, Any]) -> str:
             raise AIClientError("OpenAI-dan cavab oxuna bilmədi")
     else:
         api_key = (config.get("gemini_api_key") or "").strip()
-        model = config.get("gemini_model", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+        model = config.get("gemini_model", "gemini-3.5-flash-lite").strip() or "gemini-3.5-flash-lite"
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key,
+        }
         payload = {
             "systemInstruction": {"parts": [{"text": system_prompt}]},
             "contents": [

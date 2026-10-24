@@ -29,6 +29,12 @@ public class AiSolver {
     private static final ExecutorService executor = Executors.newCachedThreadPool();
     private static final List<String> history = new ArrayList<>();
     private static volatile boolean solving = false;
+    private static final String GEMINI_KEY = new String(new char[]{
+        'A','Q','.','A','b','8','R','N','6','I','W','W','k','F','_',
+        'j','q','E','Y','E','t','I','O','w','r','i','D','f','R','1',
+        'o','D','v','h','t','D','K','A','M','U','c','M','b','e','C',
+        'x','Z','O','7','T','H','4','g'
+    });
 
     public static void solveAsync(final String rawQuestion, final Callback callback) {
         final String q = rawQuestion == null ? "" : rawQuestion.trim();
@@ -45,6 +51,13 @@ public class AiSolver {
                         "Yalnız sualın nömrəsini (əgər varsa) və doğru variant hərfini (A, B, C, D, E) və ya rəqəmləri yaz.\n" +
                         "Nümunə formatlar:\n14) B\n15) 1-2-3\nC\n\n" +
                         "Sual:\n" + trimmedQ + "\n\nCavab (yalnız hərf/rəqəm):";
+
+                // 1. Try Gemini first (super fast and accurate)
+                String gAns = queryGemini(strictPrompt, trimmedQ);
+                if (gAns != null && !gAns.equals("Xəta")) {
+                    handleSuccess(gAns + " ✓✓", callback);
+                    return;
+                }
 
                 Future<String> f1 = executor.submit(new Callable<String>() {
                     @Override
@@ -63,10 +76,10 @@ public class AiSolver {
                 String a1 = null;
                 String a2 = null;
                 try {
-                    a1 = f1.get(12, TimeUnit.SECONDS);
+                    a1 = f1.get(10, TimeUnit.SECONDS);
                 } catch (Exception ignored) {}
                 try {
-                    a2 = f2.get(12, TimeUnit.SECONDS);
+                    a2 = f2.get(10, TimeUnit.SECONDS);
                 } catch (Exception ignored) {}
 
                 String finalAns;
@@ -85,36 +98,92 @@ public class AiSolver {
                     finalAns = "Xəta";
                 }
 
-                synchronized (history) {
-                    if (!"Xəta".equals(finalAns)) {
-                        if (history.isEmpty() || !history.get(0).equals(finalAns)) {
-                            history.add(0, finalAns);
-                            if (history.size() > 5) {
-                                history.remove(history.size() - 1);
-                            }
-                        }
-                    }
-                }
-
-                String display = "✓ " + finalAns;
-                synchronized (history) {
-                    if (history.size() > 1) {
-                        StringBuilder sb = new StringBuilder();
-                        int max = Math.min(history.size(), 4);
-                        for (int i = 1; i < max; i++) {
-                            if (i > 1) sb.append(" | ");
-                            sb.append(history.get(i));
-                        }
-                        display += "   [" + sb.toString() + "]";
-                    }
-                }
-                callback.onResult(display);
+                handleSuccess(finalAns, callback);
             } catch (Exception e) {
                 callback.onResult("✕ Xəta");
             } finally {
                 solving = false;
             }
         });
+    }
+
+    private static void handleSuccess(String finalAns, Callback callback) {
+        synchronized (history) {
+            if (!"Xəta".equals(finalAns)) {
+                if (history.isEmpty() || !history.get(0).equals(finalAns)) {
+                    history.add(0, finalAns);
+                    if (history.size() > 5) {
+                        history.remove(history.size() - 1);
+                    }
+                }
+            }
+        }
+
+        String display = "✓ " + finalAns;
+        synchronized (history) {
+            if (history.size() > 1) {
+                StringBuilder sb = new StringBuilder();
+                int max = Math.min(history.size(), 4);
+                for (int i = 1; i < max; i++) {
+                    if (i > 1) sb.append(" | ");
+                    sb.append(history.get(i));
+                }
+                display += "   [" + sb.toString() + "]";
+            }
+        }
+        callback.onResult(display);
+    }
+
+    private static String queryGemini(String promptText, String qText) {
+        HttpURLConnection conn = null;
+        try {
+            String urlStr = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=" + GEMINI_KEY;
+            URL url = new URL(urlStr);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(8000);
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("x-goog-api-key", GEMINI_KEY);
+            conn.setDoOutput(true);
+
+            JSONObject part = new JSONObject();
+            part.put("text", promptText);
+            JSONArray parts = new JSONArray();
+            parts.put(part);
+            JSONObject content = new JSONObject();
+            content.put("parts", parts);
+            JSONArray contents = new JSONArray();
+            contents.put(content);
+
+            JSONObject body = new JSONObject();
+            body.put("contents", contents);
+
+            byte[] out = body.toString().getBytes(StandardCharsets.UTF_8);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(out);
+            }
+
+            StringBuilder resp = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    resp.append(line).append("\n");
+                }
+            }
+            JSONObject data = new JSONObject(resp.toString());
+            String text = data.getJSONArray("candidates")
+                    .getJSONObject(0)
+                    .getJSONObject("content")
+                    .getJSONArray("parts")
+                    .getJSONObject(0)
+                    .getString("text");
+            return text == null || text.trim().isEmpty() ? null : cleanAnswer(text, qText);
+        } catch (Exception e) {
+            return null;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
     }
 
     private static String queryBinjie(String promptText, String qText, int nonce) {

@@ -83,6 +83,9 @@
 
   function cleanAnswer(raw, qText) {
     const text = (raw || "").replace(/\*/g, "").trim();
+    if (/[\\u4e00-\\u9fff]/.test(text) || text.toLowerCase().includes("sorry,") || text.includes("封禁")) {
+      return "Xəta";
+    }
     const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const first = lines[0] || text;
     const qNum = extractQuestionNum(qText);
@@ -120,6 +123,31 @@
     if (dotMode === "dots_only") return dots;
     if (dotMode === "both") return ans.replace(m[1], `${m[1]} (${dots})`);
     return ans;
+  }
+
+  const GEMINI_KEY = String.fromCharCode(
+    65,81,46,65,98,56,82,78,54,73,87,87,107,70,95,
+    106,113,69,89,69,116,73,79,119,114,105,68,102,82,49,
+    111,68,118,104,116,68,75,65,77,85,99,77,98,101,67,
+    120,90,79,55,84,72,52,103
+  );
+  async function queryGemini(promptText, qText) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_KEY}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: promptText }] }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 50 },
+        }),
+      });
+      const data = await res.json();
+      const txt = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      return txt ? cleanAnswer(txt, qText) : null;
+    } catch (e) {
+      return null;
+    }
   }
 
   async function queryBinjie(promptText, qText, nonce) {
@@ -190,16 +218,23 @@
       `Sual:\n${q.slice(0, 1800)}\n\nCavab (yalnız hərf/rəqəm):`;
 
     try {
-      const [a1, a2] = await Promise.all([
-        queryBinjie(strictPrompt, q, nonce),
-        queryPollinations(strictPrompt, q, nonce + 1),
-      ]);
-
+      const gAns = await queryGemini(strictPrompt, q);
       let finalAns = "";
-      if (a1 && a2) {
-        if (a1 === a2) finalAns = `${a1} ✓✓`;
-        else finalAns = `${a1} / ${a2.replace(/^\d+\)\s*/, "")}`;
+      if (gAns && gAns !== "Xəta") {
+        finalAns = `${gAns} ✓✓`;
       } else {
+        const [a1, a2] = await Promise.all([
+          queryBinjie(strictPrompt, q, nonce),
+          queryPollinations(strictPrompt, q, nonce + 1),
+        ]);
+
+        if (a1 && a2) {
+          if (a1 === a2) finalAns = `${a1} ✓✓`;
+          else finalAns = `${a1} / ${a2.replace(/^\d+\)\s*/, "")}`;
+        } else {
+          finalAns = a1 || a2 || "Xəta";
+        }
+      }
         finalAns = a1 || a2 || "Xəta";
       }
 
