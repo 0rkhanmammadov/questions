@@ -48,7 +48,9 @@ class StealthOverlay:
         self.status_state: str = "ready"  # "ready", "loading", "answer", "error"
         self.answer_text: str = ""
         self.is_visible: bool = False
+        self.held_by_user: bool = False
         self._flash_after_id: Optional[str] = None
+        self._autohide_after_id: Optional[str] = None
 
         # Main root window stays withdrawn
         self.root.withdraw()
@@ -158,12 +160,30 @@ class StealthOverlay:
                     self.status_state = state
                     self.answer_text = text
                     self._update_labels()
-                    if self.is_visible:
-                        self._reposition_KeepCurrent()
+                    # Automatically peek for 1.8s when loading/answer/error updates so user sees immediate feedback
+                    px = self.root.winfo_pointerx()
+                    py = self.root.winfo_pointery()
+                    self._do_show(px, py, held=self.held_by_user)
+                    if not self.held_by_user:
+                        if self._autohide_after_id:
+                            try:
+                                self.root.after_cancel(self._autohide_after_id)
+                            except Exception:
+                                pass
+                        dur = 900 if state == "loading" else 2200
+                        self._autohide_after_id = self.root.after(dur, self._auto_hide_if_not_held)
                 elif cmd == "show":
                     _, cx, cy = item
-                    self._do_show(cx, cy)
+                    self.held_by_user = True
+                    if self._autohide_after_id:
+                        try:
+                            self.root.after_cancel(self._autohide_after_id)
+                        except Exception:
+                            pass
+                        self._autohide_after_id = None
+                    self._do_show(cx, cy, held=True)
                 elif cmd == "hide":
+                    self.held_by_user = False
                     self._do_hide()
                 elif cmd == "flash":
                     _, fx, fy = item
@@ -225,7 +245,12 @@ class StealthOverlay:
         except Exception:
             pass
 
-    def _do_show(self, cursor_x: int, cursor_y: int) -> None:
+    def _auto_hide_if_not_held(self) -> None:
+        self._autohide_after_id = None
+        if not self.held_by_user:
+            self._do_hide()
+
+    def _do_show(self, cursor_x: int, cursor_y: int, held: bool = False) -> None:
         self._update_labels()
         self.refresh_styles()
         x, y = self._compute_position(cursor_x, cursor_y)
