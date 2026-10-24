@@ -1,3 +1,4 @@
+import ctypes
 import inspect
 import threading
 import time
@@ -5,11 +6,16 @@ from typing import Callable, Optional, Tuple
 
 from pynput import keyboard, mouse
 
+VK_LBUTTON = 0x01
+VK_BACK = 0x08
+VK_SHIFT = 0x10
+VK_CONTROL = 0x11
+VK_SNAPSHOT = 0x2C
 VK_C = 0x43
-VK_X = 0x58
-VK_S = 0x53
-VK_Q = 0x51
 VK_D = 0x44
+VK_Q = 0x51
+VK_S = 0x53
+VK_X = 0x58
 
 CTRL_CHARS = {
     "\x03": "C",
@@ -18,6 +24,26 @@ CTRL_CHARS = {
     "\x11": "Q",
     "\x04": "D",
 }
+
+
+class POINT(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+
+def _is_vk_down(vk: int) -> bool:
+    try:
+        return bool(ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000)
+    except Exception:
+        return False
+
+
+def _get_win32_cursor() -> Tuple[int, int]:
+    pt = POINT()
+    try:
+        ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+        return int(pt.x), int(pt.y)
+    except Exception:
+        return 400, 400
 
 
 def is_key_letter(key: object, letter: str, vk_code: int) -> bool:
@@ -73,11 +99,12 @@ class HotkeyManager:
         self.last_drag_box: Optional[Tuple[int, int, int, int, float]] = None
 
         self._last_action_ts: float = 0.0
-        self._mouse_ctrl = mouse.Controller()
+        self._running: bool = False
         self._kb_listener: Optional[keyboard.Listener] = None
         self._mouse_listener: Optional[mouse.Listener] = None
 
     def start(self) -> None:
+        self._running = True
         self._kb_listener = keyboard.Listener(
             on_press=self._on_key_press,
             on_release=self._on_key_release,
@@ -89,19 +116,100 @@ class HotkeyManager:
         self._mouse_listener.daemon = True
         self._kb_listener.start()
         self._mouse_listener.start()
+        threading.Thread(target=self._win32_poll_loop, daemon=True).start()
 
     def stop(self) -> None:
+        self._running = False
         if self._kb_listener:
             self._kb_listener.stop()
         if self._mouse_listener:
             self._mouse_listener.stop()
 
     def _get_cursor_pos(self) -> Tuple[int, int]:
-        try:
-            pos = self._mouse_ctrl.position
-            return int(pos[0]), int(pos[1])
-        except Exception:
-            return 400, 400
+        return _get_win32_cursor()
+
+    def _win32_poll_loop(self) -> None:
+        prev_lbtn = False
+        while self._running:
+            try:
+                ctrl_down = _is_vk_down(VK_CONTROL)
+                shift_down = _is_vk_down(VK_SHIFT)
+                lbtn_down = _is_vk_down(VK_LBUTTON)
+                now = time.monotonic()
+
+                self.ctrl_held = ctrl_down
+                self.shift_held = shift_down
+
+                # Overlay hold check (Ctrl + Shift)
+                if ctrl_down and shift_down:
+                    if not self.overlay_shown:
+                        self.overlay_shown = True
+                        cx, cy = _get_win32_cursor()
+                        self.on_show_overlay(cx, cy)
+                else:
+                    if self.overlay_shown:
+                        self.overlay_shown = False
+                        self.on_hide_overlay()
+
+                # Mouse drag check via Win32 (works even over elevated windows)
+                if lbtn_down and not prev_lbtn:
+                    cx, cy = _get_win32_cursor()
+                    self.mouse_left_held = True
+                    self.drag_start = (cx, cy)
+                    self.drag_with_ctrl = bool(ctrl_down and not shift_down)
+                elif lbtn_down and prev_lbtn:
+                    if ctrl_down and not shift_down:
+                        self.drag_with_ctrl = True
+                elif not lbtn_down and prev_lbtn:
+                    self.mouse_left_held = False
+                    if self.drag_start is not None:
+                        x1, y1 = self.drag_start
+                        x2, y2 = _get_win32_cursor()
+                        was_ctrl = ctrl_down or self.drag_with_ctrl
+                        self.drag_start = None
+                        self.drag_with_ctrl = False
+                        if abs(x2 - x1) >= 15 and abs(y2 - y1) >= 10:
+                            self.last_drag_box = (x1, y1, x2, y2, now)
+                            if was_ctrl and not shift_down and (now - self._last_action_ts > 0.35):
+                                self._last_action_ts = now
+                                self.on_region_capture(x1, y1, x2, y2)
+                prev_lbtn = lbtn_down
+
+                # Hotkey checks via Win32
+                if ctrl_down and _is_vk_down(VK_BACK):
+                    self._hide_if_shown()
+                    self.on_quit()
+                    break
+
+                if _is_vk_down(VK_SNAPSHOT) and self.on_fullscreen_capture:
+                    if now - self._last_action_ts > 0.45:
+                        self._last_action_ts = now
+                        cx, cy = _get_win32_cursor()
+                        self.on_fullscreen_capture(cx, cy)
+
+                if ctrl_down and not shift_down:
+                    if _is_vk_down(VK_X) and self.on_fullscreen_capture:
+                        if now - self._last_action_ts > 0.45:
+                            self._last_action_ts = now
+                            cx, cy = _get_win32_cursor()
+                            self.on_fullscreen_capture(cx, cy)
+                    elif _is_vk_down(VK_C):
+                        if now - self._last_action_ts > 0.45:
+                            self._last_action_ts = now
+                            cx, cy = _get_win32_cursor()
+                            threading.Timer(0.18, lambda: self._invoke_clipboard_cb(cx, cy)).start()
+
+                if ctrl_down and shift_down:
+                    if _is_vk_down(VK_S) and (now - self._last_action_ts > 0.45):
+                        self._last_action_ts = now
+                        self._hide_if_shown()
+                        self.on_open_settings()
+                    elif _is_vk_down(VK_D) and self.on_toggle_dot_mode and (now - self._last_action_ts > 0.45):
+                        self._last_action_ts = now
+                        self.on_toggle_dot_mode()
+            except Exception:
+                pass
+            time.sleep(0.03)
 
     def _invoke_clipboard_cb(self, cx: int, cy: int) -> None:
         box = None
@@ -133,51 +241,46 @@ class HotkeyManager:
 
         now = time.monotonic()
 
-        # Panic Exit & Clean: Ctrl + Backspace
         if self.ctrl_held and key == keyboard.Key.backspace:
             self._hide_if_shown()
             self.on_quit()
             return
 
-        # PrintScreen key -> instant screenshot solve
         if key == keyboard.Key.print_screen and self.on_fullscreen_capture:
-            if now - self._last_action_ts > 0.3:
+            if now - self._last_action_ts > 0.4:
                 self._last_action_ts = now
                 cx, cy = self._get_cursor_pos()
                 self.on_fullscreen_capture(cx, cy)
             return
 
-        # Check Ctrl + Shift + S (Settings), Ctrl + Shift + D (Dot Mode), Ctrl + Shift + Q (Quit)
         if self.ctrl_held and self.shift_held:
             if is_key_letter(key, "S", VK_S):
-                if now - self._last_action_ts > 0.35:
+                if now - self._last_action_ts > 0.4:
                     self._last_action_ts = now
                     self._hide_if_shown()
                     self.on_open_settings()
                 return
             if is_key_letter(key, "D", VK_D) and self.on_toggle_dot_mode:
-                if now - self._last_action_ts > 0.35:
+                if now - self._last_action_ts > 0.4:
                     self._last_action_ts = now
                     self.on_toggle_dot_mode()
                 return
             if is_key_letter(key, "Q", VK_Q):
-                if now - self._last_action_ts > 0.35:
+                if now - self._last_action_ts > 0.4:
                     self._last_action_ts = now
                     self._hide_if_shown()
                     self.on_quit()
                 return
 
-        # Check Ctrl + X (Direct Screenshot solve) when Shift is NOT held
         if self.ctrl_held and not self.shift_held and is_key_letter(key, "X", VK_X):
-            if self.on_fullscreen_capture and now - self._last_action_ts > 0.3:
+            if self.on_fullscreen_capture and now - self._last_action_ts > 0.4:
                 self._last_action_ts = now
                 cx, cy = self._get_cursor_pos()
                 self.on_fullscreen_capture(cx, cy)
             return
 
-        # Check Ctrl + C (Clipboard capture + auto screenshot fallback if copy is blocked!)
         if self.ctrl_held and not self.shift_held and is_key_letter(key, "C", VK_C):
-            if now - self._last_action_ts > 0.25:
+            if now - self._last_action_ts > 0.4:
                 self._last_action_ts = now
                 cx, cy = self._get_cursor_pos()
                 threading.Timer(0.18, lambda: self._invoke_clipboard_cb(cx, cy)).start()
@@ -205,6 +308,7 @@ class HotkeyManager:
         if button != mouse.Button.left:
             return
 
+        now = time.monotonic()
         if pressed:
             self.mouse_left_held = True
             self.drag_start = (int(x), int(y))
@@ -219,8 +323,9 @@ class HotkeyManager:
                 self.drag_with_ctrl = False
 
                 if abs(x2 - x1) >= 15 and abs(y2 - y1) >= 10:
-                    self.last_drag_box = (x1, y1, x2, y2, time.monotonic())
-                    if was_ctrl and not self.shift_held:
+                    self.last_drag_box = (x1, y1, x2, y2, now)
+                    if was_ctrl and not self.shift_held and (now - self._last_action_ts > 0.35):
+                        self._last_action_ts = now
                         self.on_region_capture(x1, y1, x2, y2)
             else:
                 self.drag_start = None
