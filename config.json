@@ -1,6 +1,6 @@
 {
   "provider": "free",
-  "gemini_api_key": "",
+  "gemini_api_key": "AQ.Ab8RN6LNai8wcLfqPIA-ebwYJByL3fBR6FBhDK60zjrkfsN2rQ",
   "gemini_model": "gemini-2.5-flash",
   "openai_api_key": "",
   "openai_model": "gpt-4o-mini",
