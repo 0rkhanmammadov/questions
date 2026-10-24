@@ -66,18 +66,21 @@ def capture_region_png(x1: int, y1: int, x2: int, y2: int) -> Optional[bytes]:
 
 def capture_fullscreen_png() -> Optional[bytes]:
     try:
-        user32 = ctypes.windll.user32
-        sw = user32.GetSystemMetrics(0)
-        sh = user32.GetSystemMetrics(1)
+        sct_cls = getattr(mss, "MSS", mss.mss)
+        with sct_cls() as sct:
+            # monitors[1] is the primary monitor full resolution (DPI-correct)
+            mon = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
+            sct_img = sct.grab(mon)
+            img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+            return image_to_png_bytes(img)
     except Exception:
-        sw, sh = 1920, 1080
-    # Exclude top browser tab bar (85px) and bottom Windows taskbar (50px)
-    top = 85 if sh > 400 else 0
-    height = max(200, sh - top - 50)
-    img = grab_raw_image(0, top, sw, height)
-    if img is None:
-        return None
-    return image_to_png_bytes(img)
+        try:
+            img = ImageGrab.grab(all_screens=True)
+            if img:
+                return image_to_png_bytes(img)
+        except Exception:
+            pass
+    return None
 
 
 def get_clipboard_text() -> str:

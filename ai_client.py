@@ -106,6 +106,12 @@ def _extract_question_num(question_text: str) -> str:
 
 def _clean_answer(ans: str, question_text: str = "") -> str:
     text = (ans or "").replace("**", "").replace("*", "").strip()
+    if not text:
+        return ""
+    # Reject anti-abuse / Chinese rate-limit spam messages
+    if re.search(r"[\u4e00-\u9fff]", text) or "sorry," in text.lower() or "封禁" in text:
+        return ""
+
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     first_line = lines[0] if lines else text
 

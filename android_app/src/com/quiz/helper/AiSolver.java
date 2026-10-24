@@ -152,7 +152,10 @@ public class AiSolver {
                 }
             }
             String raw = resp.toString().trim();
-            return raw.isEmpty() ? null : cleanAnswer(raw, qText);
+            if (raw.isEmpty() || raw.matches("(?s).*[\\u4e00-\\u9fff].*") || raw.contains("sorry,") || raw.contains("封禁")) {
+                return null;
+            }
+            return cleanAnswer(raw, qText);
         } catch (Exception e) {
             return null;
         } finally {
@@ -224,6 +227,9 @@ public class AiSolver {
 
     public static String cleanAnswer(String raw, String qText) {
         String text = (raw == null ? "" : raw).replace("*", "").trim();
+        if (text.matches("(?s).*[\\u4e00-\\u9fff].*") || text.contains("sorry,") || text.contains("封禁")) {
+            return "Xəta";
+        }
         String[] lines = text.split("\\r?\\n");
         String first = text;
         for (String l : lines) {
