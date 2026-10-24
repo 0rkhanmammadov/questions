@@ -29,6 +29,7 @@ public class AiSolver {
     private static final ExecutorService executor = Executors.newCachedThreadPool();
     private static final List<String> history = new ArrayList<>();
     private static volatile boolean solving = false;
+
     private static final String GEMINI_KEY = new String(new char[]{
         'A','Q','.','A','b','8','R','N','6','I','W','W','k','F','_',
         'j','q','E','Y','E','t','I','O','w','r','i','D','f','R','1',
@@ -48,11 +49,11 @@ public class AiSolver {
                 final int nonce = 1000000 + new Random().nextInt(8999999);
                 final String strictPrompt =
                         "QAYDA: Heç bir izahat, cümlə və ya söz YAZMA! " +
-                        "Yalnız sualın nömrəsini (əgər varsa) və doğru variant hərfini (A, B, C, D, E) və ya rəqəmləri yaz.\n" +
-                        "Nümunə formatlar:\n14) B\n15) 1-2-3\nC\n\n" +
-                        "Sual:\n" + trimmedQ + "\n\nCavab (yalnız hərf/rəqəm):";
+                        "Yalnız və yalnız cari TƏK BİR sualın nömrəsini (əgər varsa) və doğru variant hərfini (A, B, C, D, E) və ya rəqəmləri yaz.\n" +
+                        "BİR NEÇƏ SUAL YAZMA! Yalnız 1 tək sual!\n" +
+                        "Nümunə: 14) B və ya 15) 1-2-3\n\n" +
+                        "Sual:\n" + trimmedQ + "\n\nCavab (yalnız 1 sual):";
 
-                // 1. Try Gemini first (super fast and accurate)
                 String gAns = queryGemini(strictPrompt, trimmedQ);
                 if (gAns != null && !gAns.equals("Xəta")) {
                     handleSuccess(gAns + " ✓✓", callback);
@@ -107,6 +108,27 @@ public class AiSolver {
         });
     }
 
+    public static void solveImageAsync(final byte[] imageBytes, final Callback callback) {
+        if (imageBytes == null || imageBytes.length == 0 || solving) {
+            return;
+        }
+        solving = true;
+        executor.submit(() -> {
+            try {
+                String ans = queryGeminiVision(imageBytes);
+                if (ans != null && !ans.equals("Xəta")) {
+                    handleSuccess(ans + " ✓✓", callback);
+                } else {
+                    callback.onResult("✕ Şəkildən sual tapılmadı");
+                }
+            } catch (Exception e) {
+                callback.onResult("✕ Xəta");
+            } finally {
+                solving = false;
+            }
+        });
+    }
+
     private static void handleSuccess(String finalAns, Callback callback) {
         synchronized (history) {
             if (!"Xəta".equals(finalAns)) {
@@ -132,6 +154,73 @@ public class AiSolver {
             }
         }
         callback.onResult(display);
+    }
+
+    public static String queryGeminiVision(byte[] imageBytes) {
+        HttpURLConnection conn = null;
+        try {
+            String b64 = android.util.Base64.encodeToString(imageBytes, android.util.Base64.NO_WRAP);
+            String urlStr = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=" + GEMINI_KEY;
+            URL url = new URL(urlStr);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(14000);
+            conn.setReadTimeout(14000);
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("x-goog-api-key", GEMINI_KEY);
+            conn.setDoOutput(true);
+
+            JSONObject textPart = new JSONObject();
+            textPart.put("text", "QAYDA: Şəkildəki cari TƏK BİR sualın nömrəsini və doğru variant hərfini yaz (məsələn: 14) B və ya 15) 1-2-3). YALNIZ 1 SUAL! Bir neçə sual yazma. İzahat yazma.");
+
+            JSONObject inlineData = new JSONObject();
+            inlineData.put("mimeType", "image/jpeg");
+            inlineData.put("data", b64);
+
+            JSONObject imagePart = new JSONObject();
+            imagePart.put("inlineData", inlineData);
+
+            JSONArray parts = new JSONArray();
+            parts.put(textPart);
+            parts.put(imagePart);
+
+            JSONObject content = new JSONObject();
+            content.put("parts", parts);
+            JSONArray contents = new JSONArray();
+            contents.put(content);
+
+            JSONObject body = new JSONObject();
+            body.put("contents", contents);
+            JSONObject genConfig = new JSONObject();
+            genConfig.put("temperature", 0.1);
+            genConfig.put("maxOutputTokens", 40);
+            body.put("generationConfig", genConfig);
+
+            byte[] out = body.toString().getBytes(StandardCharsets.UTF_8);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(out);
+            }
+
+            StringBuilder resp = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    resp.append(line).append("\n");
+                }
+            }
+            JSONObject data = new JSONObject(resp.toString());
+            String text = data.getJSONArray("candidates")
+                    .getJSONObject(0)
+                    .getJSONObject("content")
+                    .getJSONArray("parts")
+                    .getJSONObject(0)
+                    .getString("text");
+            return text == null || text.trim().isEmpty() ? null : cleanAnswer(text, "");
+        } catch (Exception e) {
+            return null;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
     }
 
     private static String queryGemini(String promptText, String qText) {
@@ -204,7 +293,7 @@ public class AiSolver {
             body.put("prompt", promptText);
             body.put("userId", "#/chat/" + nonce);
             body.put("network", false);
-            body.put("system", "Respond ONLY with the question number and option letter (e.g. '14) B' or '15) 1-2-3'). Never write explanations.");
+            body.put("system", "Respond ONLY with 1 single question number and option letter (e.g. '14) B'). Never write explanations.");
             body.put("withoutContext", false);
             body.put("stream", false);
 
@@ -235,7 +324,7 @@ public class AiSolver {
     private static String queryPollinations(String promptText, String qText, int nonce) {
         HttpURLConnection conn = null;
         try {
-            URL url = new URL("https://text.pollinations.ai/openai");
+            URL url = new URL("https://text.pollinations.ai/");
             conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(10000);
@@ -244,21 +333,15 @@ public class AiSolver {
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36");
             conn.setDoOutput(true);
 
-            JSONObject sysMsg = new JSONObject();
-            sysMsg.put("role", "system");
-            sysMsg.put("content", "QAYDA: Heç bir izahat yazma! Yalnız sualın nömrəsini və doğru variant hərfini (məs: 14) B və ya 15) 1-2-3) yaz.");
-
             JSONObject usrMsg = new JSONObject();
             usrMsg.put("role", "user");
             usrMsg.put("content", promptText);
 
             JSONArray messages = new JSONArray();
-            messages.put(sysMsg);
             messages.put(usrMsg);
 
             JSONObject body = new JSONObject();
-            body.put("model", "openai");
-            body.put("seed", nonce);
+            body.put("model", "openai-fast");
             body.put("messages", messages);
             body.put("temperature", 0.1);
 
@@ -274,12 +357,11 @@ public class AiSolver {
                     resp.append(line).append("\n");
                 }
             }
-            JSONObject data = new JSONObject(resp.toString());
-            String content = data.getJSONArray("choices")
-                    .getJSONObject(0)
-                    .getJSONObject("message")
-                    .getString("content");
-            return content == null || content.trim().isEmpty() ? null : cleanAnswer(content, qText);
+            String raw = resp.toString().trim();
+            if (raw.isEmpty() || raw.matches("(?s).*[\\u4e00-\\u9fff].*") || raw.contains("sorry,") || raw.contains("Payment Required")) {
+                return null;
+            }
+            return cleanAnswer(raw, qText);
         } catch (Exception e) {
             return null;
         } finally {

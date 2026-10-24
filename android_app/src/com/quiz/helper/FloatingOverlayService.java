@@ -226,8 +226,36 @@ public class FloatingOverlayService extends Service {
     }
 
     private void triggerScreenOrClipboardSolve() {
+        dotButton.setTextColor(Color.parseColor("#F59E0B"));
+        showTempMessage("◌ Ekran oxunur...", 1200);
+
+        final ScreenReaderService reader = ScreenReaderService.instance;
+        if (reader != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            reader.captureScreenshot(new ScreenReaderService.ScreenshotCallback() {
+                @Override
+                public void onScreenshot(byte[] jpegBytes) {
+                    if (jpegBytes != null && jpegBytes.length > 500) {
+                        AiSolver.solveImageAsync(jpegBytes, new AiSolver.Callback() {
+                            @Override
+                            public void onResult(final String formattedAnswer) {
+                                mainHandler.post(() -> {
+                                    dotButton.setTextColor(Color.parseColor("#4ADE80"));
+                                    showTempMessage(formattedAnswer, 3000);
+                                });
+                            }
+                        });
+                    } else {
+                        fallbackTextSolve(reader);
+                    }
+                }
+            });
+            return;
+        }
+        fallbackTextSolve(reader);
+    }
+
+    private void fallbackTextSolve(ScreenReaderService reader) {
         String questionText = "";
-        ScreenReaderService reader = ScreenReaderService.instance;
         if (reader != null) {
             questionText = reader.readCurrentScreenText();
         }
@@ -244,22 +272,16 @@ public class FloatingOverlayService extends Service {
         }
 
         if (questionText == null || questionText.trim().length() < 4) {
-            showTempMessage("✕ Ekran oxuma icazəsini aç və ya mətni kopyala", 2400);
+            showTempMessage("✕ Ekran şəkli və ya mətn tapılmadı", 2400);
             return;
         }
-
-        dotButton.setTextColor(Color.parseColor("#F59E0B"));
-        showTempMessage("◌ ...", 1200);
 
         AiSolver.solveAsync(questionText, new AiSolver.Callback() {
             @Override
             public void onResult(final String formattedAnswer) {
-                mainHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        dotButton.setTextColor(Color.parseColor("#4ADE80"));
-                        showTempMessage(formattedAnswer, 2600);
-                    }
+                mainHandler.post(() -> {
+                    dotButton.setTextColor(Color.parseColor("#4ADE80"));
+                    showTempMessage(formattedAnswer, 3000);
                 });
             }
         });

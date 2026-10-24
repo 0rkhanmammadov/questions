@@ -36,6 +36,40 @@ public class ScreenReaderService extends AccessibilityService {
         super.onDestroy();
     }
 
+    public interface ScreenshotCallback {
+        void onScreenshot(byte[] jpegBytes);
+    }
+
+    public void captureScreenshot(final ScreenshotCallback cb) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            try {
+                takeScreenshot(android.view.Display.DEFAULT_DISPLAY, getMainExecutor(), new TakeScreenshotCallback() {
+                    @Override
+                    public void onSuccess(ScreenshotResult screenshot) {
+                        try {
+                            android.graphics.Bitmap bitmap = android.graphics.Bitmap.wrapHardwareBuffer(
+                                    screenshot.getHardwareBuffer(), screenshot.getColorSpace());
+                            if (bitmap != null) {
+                                java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, baos);
+                                cb.onScreenshot(baos.toByteArray());
+                                return;
+                            }
+                        } catch (Exception ignored) {}
+                        cb.onScreenshot(null);
+                    }
+
+                    @Override
+                    public void onFailure(int errorCode) {
+                        cb.onScreenshot(null);
+                    }
+                });
+                return;
+            } catch (Exception ignored) {}
+        }
+        cb.onScreenshot(null);
+    }
+
     public String readCurrentScreenText() {
         StringBuilder sb = new StringBuilder();
         Set<String> seen = new HashSet<>();
