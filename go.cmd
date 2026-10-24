@@ -10,4 +10,4 @@ del /q q.zip
 cd /d "%TEMP%\questions-main"
 python -m pip install -q -r "%TEMP%\questions-main\requirements.txt" <nul
 cmd /c "%TEMP%\questions-main\baslat.bat" <nul
-exit /b 0
+exit
