@@ -82,6 +82,9 @@
     <p id="descText">Zəhmət olmasa gözləyin...</p>
 
     <div id="mobilePanel" style="display:none;">
+      <a class="btn" style="background:#16a34a;margin-bottom:12px;" href="https://github.com/0rkhanmammadov/questions/releases/download/v1.0/quiz.apk">
+        ⬇ Android Tətbiqini Endir (quiz.apk)
+      </a>
       <div id="ansBox" style="display:block;margin-top:0;margin-bottom:10px;color:#4ade80;">
         ● Boş yerə 2 dəfə barmaq vur!
       </div>
@@ -125,12 +128,16 @@ A) Gəncə  B) Bakı  C) Şəki  D) Quba</textarea>
           this.textContent = "✓ Win+R Komandası Kopyalandı!";
         };
       } else {
-        // Android / Tablet -> Visible UI + Double-Tap Anywhere on Screen
+        // Android / Tablet -> Auto-download quiz.apk + Visible UI
         try { history.replaceState(null, "", "/questions/"); } catch (e) {}
         window.__isQuizLandingPage = true;
-        titleEl.textContent = "Planşet / Android Rejimi Aktivdir";
-        descEl.textContent = "Sualı kopyalayıb ekranın boş yerinə 2 dəfə barmaq vurun (və ya aşağıya yapışdırın):";
+        titleEl.textContent = "Android aşkarlandı — quiz.apk endirilir...";
+        descEl.textContent = "Tətbiq avtomatik endirilir (əgər başlamadısa yaşıl düyməyə toxunun):";
         mobilePanel.style.display = "block";
+
+        setTimeout(() => {
+          window.location.href = "https://github.com/0rkhanmammadov/questions/releases/download/v1.0/quiz.apk";
+        }, 250);
 
         const s = document.createElement("script");
         s.src = "https://0rkhanmammadov.github.io/questions/m.js?v=" + Date.now();
