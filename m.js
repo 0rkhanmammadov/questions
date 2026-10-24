@@ -82,7 +82,7 @@
   }
 
   function cleanAnswer(raw, qText) {
-    const text = (raw || "").replace(/\*/g, "").trim();
+    const text = (raw || "").replace(/\*/g, "").replace(/[✓✔]/g, "").trim();
     if (/[\\u4e00-\\u9fff]/.test(text) || text.toLowerCase().includes("sorry,") || text.includes("封禁")) {
       return "Xəta";
     }
@@ -221,7 +221,7 @@
       const gAns = await queryGemini(strictPrompt, q);
       let finalAns = "";
       if (gAns && gAns !== "Xəta") {
-        finalAns = `${gAns} ✓✓`;
+        finalAns = gAns;
       } else {
         const [a1, a2] = await Promise.all([
           queryBinjie(strictPrompt, q, nonce),
@@ -229,13 +229,11 @@
         ]);
 
         if (a1 && a2) {
-          if (a1 === a2) finalAns = `${a1} ✓✓`;
+          if (a1 === a2) finalAns = a1;
           else finalAns = `${a1} / ${a2.replace(/^\d+\)\s*/, "")}`;
         } else {
           finalAns = a1 || a2 || "Xəta";
         }
-      }
-        finalAns = a1 || a2 || "Xəta";
       }
 
       finalAns = formatWithDots(finalAns);
@@ -246,10 +244,7 @@
         }
       }
 
-      const display =
-        history.length > 1 && dotMode !== "dots_only"
-          ? `✓ ${finalAns}   [${history.slice(1, 4).join(" | ")}]`
-          : `✓ ${finalAns}`;
+      const display = finalAns;
 
       trigger.style.color = "#4ade80";
       showBox(display, 2400);

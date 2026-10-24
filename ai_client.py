@@ -105,7 +105,7 @@ def _extract_question_num(question_text: str) -> str:
 
 
 def _clean_answer(ans: str, question_text: str = "") -> str:
-    text = (ans or "").replace("**", "").replace("*", "").strip()
+    text = (ans or "").replace("**", "").replace("*", "").replace("✓", "").replace("✔", "").strip()
     if not text:
         return ""
     # Reject anti-abuse / Chinese rate-limit spam messages
@@ -257,7 +257,7 @@ def _solve_free_text(cleaned_q: str, system_prompt: str, dual_ai: bool = False) 
 
         if a1 and a2:
             if a1 == a2:
-                return f"{a1} ✓✓"
+                return a1
             # Extract option tail from a2 (e.g. "14) C" -> "C")
             a2_short = re.sub(r"^\d+\)\s*", "", a2).strip()
             return f"{a1} / {a2_short}"

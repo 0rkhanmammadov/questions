@@ -203,7 +203,7 @@ class StealthOverlay:
             self.dot_label.configure(text="◌", fg="#f59e0b")
             self.text_label.configure(text=self.answer_text or "Həll edilir...", fg="#fde68a")
         elif self.status_state == "answer":
-            self.dot_label.configure(text="✓", fg="#4ade80")
+            self.dot_label.configure(text="", fg="#4ade80")
             self.text_label.configure(text=self.answer_text, fg="#f4f4f5")
         elif self.status_state == "error":
             self.dot_label.configure(text="✕", fg="#f87171")

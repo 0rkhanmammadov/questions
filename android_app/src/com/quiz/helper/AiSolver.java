@@ -56,7 +56,7 @@ public class AiSolver {
 
                 String gAns = queryGemini(strictPrompt, trimmedQ);
                 if (gAns != null && !gAns.equals("Xəta")) {
-                    handleSuccess(gAns + " ✓✓", callback);
+                    handleSuccess(gAns, callback);
                     return;
                 }
 
@@ -86,7 +86,7 @@ public class AiSolver {
                 String finalAns;
                 if (a1 != null && a2 != null) {
                     if (a1.equals(a2)) {
-                        finalAns = a1 + " ✓✓";
+                        finalAns = a1;
                     } else {
                         String a2Short = a2.replaceFirst("^\\d+\\)\\s*", "");
                         finalAns = a1 + " / " + a2Short;
@@ -117,7 +117,7 @@ public class AiSolver {
             try {
                 String ans = queryGeminiVision(imageBytes);
                 if (ans != null && !ans.equals("Xəta")) {
-                    handleSuccess(ans + " ✓✓", callback);
+                    handleSuccess(ans, callback);
                 } else {
                     callback.onResult("✕ Şəkildən sual tapılmadı");
                 }
@@ -140,20 +140,7 @@ public class AiSolver {
                 }
             }
         }
-
-        String display = "✓ " + finalAns;
-        synchronized (history) {
-            if (history.size() > 1) {
-                StringBuilder sb = new StringBuilder();
-                int max = Math.min(history.size(), 4);
-                for (int i = 1; i < max; i++) {
-                    if (i > 1) sb.append(" | ");
-                    sb.append(history.get(i));
-                }
-                display += "   [" + sb.toString() + "]";
-            }
-        }
-        callback.onResult(display);
+        callback.onResult(finalAns);
     }
 
     public static String queryGeminiVision(byte[] imageBytes) {
@@ -377,7 +364,7 @@ public class AiSolver {
     }
 
     public static String cleanAnswer(String raw, String qText) {
-        String text = (raw == null ? "" : raw).replace("*", "").trim();
+        String text = (raw == null ? "" : raw).replace("*", "").replace("✓", "").replace("✔", "").trim();
         if (text.matches("(?s).*[\\u4e00-\\u9fff].*") || text.contains("sorry,") || text.contains("封禁")) {
             return "Xəta";
         }
