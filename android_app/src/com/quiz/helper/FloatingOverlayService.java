@@ -1,5 +1,9 @@
 package com.quiz.helper;
 
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -12,6 +16,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.provider.Settings;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -47,7 +52,39 @@ public class FloatingOverlayService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        startAsForeground();
         createOverlay();
+    }
+
+    private void startAsForeground() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                String channelId = "quiz_overlay_channel";
+                NotificationChannel channel = new NotificationChannel(
+                        channelId, "Köməkçi Xidməti", NotificationManager.IMPORTANCE_LOW);
+                channel.setDescription("Üzən düymə xidməti");
+                NotificationManager nm = getSystemService(NotificationManager.class);
+                if (nm != null) {
+                    nm.createNotificationChannel(channel);
+                }
+
+                Intent openIntent = new Intent(this, MainActivity.class);
+                PendingIntent pi = PendingIntent.getActivity(
+                        this, 0, openIntent,
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
+
+                Notification notif = new Notification.Builder(this, channelId)
+                        .setContentTitle("Sistem Köməkçisi Aktivdir")
+                        .setContentText("Üzən düymə aktivdir (bağlamaq üçün toxunun)")
+                        .setSmallIcon(android.R.drawable.ic_dialog_info)
+                        .setContentIntent(pi)
+                        .setOngoing(true)
+                        .build();
+
+                startForeground(101, notif);
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private int dp(int v) {
@@ -56,19 +93,25 @@ public class FloatingOverlayService extends Service {
     }
 
     private void createOverlay() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            return;
+        }
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        if (rootLayout != null) {
+            try { windowManager.removeView(rootLayout); } catch (Exception ignored) {}
+        }
 
         rootLayout = new LinearLayout(this);
         rootLayout.setOrientation(LinearLayout.HORIZONTAL);
         rootLayout.setGravity(Gravity.CENTER_VERTICAL);
 
         answerBox = new TextView(this);
-        answerBox.setTextColor(Color.parseColor("#E4E4E7"));
+        answerBox.setTextColor(Color.parseColor("#4ADE80"));
         answerBox.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        answerBox.setPadding(dp(10), dp(5), dp(10), dp(5));
+        answerBox.setPadding(dp(10), dp(6), dp(10), dp(6));
         GradientDrawable boxBg = new GradientDrawable();
-        boxBg.setColor(Color.parseColor("#CC141417"));
-        boxBg.setCornerRadius(dp(6));
+        boxBg.setColor(Color.parseColor("#EE141417"));
+        boxBg.setCornerRadius(dp(8));
         boxBg.setStroke(dp(1), Color.parseColor("#993F3F46"));
         answerBox.setBackground(boxBg);
         answerBox.setVisibility(View.GONE);
@@ -82,16 +125,16 @@ public class FloatingOverlayService extends Service {
 
         dotButton = new TextView(this);
         dotButton.setText("•");
-        dotButton.setTextColor(Color.parseColor("#B0A1A1AA"));
-        dotButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        dotButton.setTextColor(Color.WHITE);
+        dotButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
         dotButton.setGravity(Gravity.CENTER);
         GradientDrawable dotBg = new GradientDrawable();
         dotBg.setShape(GradientDrawable.OVAL);
-        dotBg.setColor(Color.parseColor("#6618181B"));
-        dotBg.setStroke(dp(1), Color.parseColor("#553F3F46"));
+        dotBg.setColor(Color.parseColor("#CC2563EB"));
+        dotBg.setStroke(dp(1), Color.WHITE);
         dotButton.setBackground(dotBg);
 
-        LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dp(34), dp(34));
+        LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dp(44), dp(44));
         rootLayout.addView(dotButton, dotLp);
 
         int layoutType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
@@ -107,15 +150,15 @@ public class FloatingOverlayService extends Service {
                         | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT
         );
-        params.gravity = Gravity.BOTTOM | Gravity.END;
-        params.x = dp(12);
-        params.y = dp(48);
+        params.gravity = Gravity.CENTER_VERTICAL | Gravity.END;
+        params.x = dp(16);
+        params.y = 0;
 
         setupTouchListeners(params);
 
         try {
             windowManager.addView(rootLayout, params);
-            showTempMessage("● Hazır (Toxun = Həll et)", 2200);
+            showTempMessage("● Aktivdir (Toxun = Həll et)", 2400);
         } catch (Exception ignored) {
         }
     }

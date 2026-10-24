@@ -200,9 +200,21 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         updateOverlayButtonLabel();
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
-            startService(new Intent(this, FloatingOverlayService.class));
+        startOverlayServiceSafely();
+    }
+
+    private void startOverlayServiceSafely() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            return;
         }
+        try {
+            Intent intent = new Intent(this, FloatingOverlayService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent);
+            } else {
+                startService(intent);
+            }
+        } catch (Exception ignored) {}
     }
 
     private void updateOverlayButtonLabel() {
@@ -227,7 +239,7 @@ public class MainActivity extends Activity {
             startActivity(intent);
             return;
         }
-        startService(new Intent(this, FloatingOverlayService.class));
+        startOverlayServiceSafely();
         if (ScreenReaderService.instance == null) {
             Toast.makeText(this, "Endirilən xidmətlərdən 'Ekran Oxuyucu Köməkçi' aktiv edin", Toast.LENGTH_LONG).show();
             Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
