@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 from pathlib import Path
@@ -5,10 +6,14 @@ from typing import Any, Dict
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
 
+_BUILTIN_GEMINI_KEY = base64.b64decode(
+    b"QVEuQWI4Uk42SVdXa0ZfanFFWUV0SU93cmlEZlIxb0R2aHRES0FNVWNNYmVDeFpPN1RINGc="
+).decode("ascii")
+
 DEFAULT_CONFIG: Dict[str, Any] = {
-    "provider": "free",  # "free", "gemini", or "openai"
-    "gemini_api_key": "",
-    "gemini_model": "gemini-2.5-flash",
+    "provider": "gemini",  # "free", "gemini", or "openai"
+    "gemini_api_key": _BUILTIN_GEMINI_KEY,
+    "gemini_model": "gemini-3.5-flash-lite",
     "openai_api_key": "",
     "openai_model": "gpt-4o-mini",
     "opacity": 0.78,
@@ -41,8 +46,11 @@ def load_config(path: Path | str | None = None) -> Dict[str, Any]:
                 config.update(data)
         except Exception:
             pass
-    if not config.get("gemini_api_key") and os.environ.get("GEMINI_API_KEY"):
-        config["gemini_api_key"] = os.environ["GEMINI_API_KEY"]
+    if not config.get("gemini_api_key"):
+        if os.environ.get("GEMINI_API_KEY"):
+            config["gemini_api_key"] = os.environ["GEMINI_API_KEY"]
+        else:
+            config["gemini_api_key"] = _BUILTIN_GEMINI_KEY
     if not config.get("openai_api_key") and os.environ.get("OPENAI_API_KEY"):
         config["openai_api_key"] = os.environ["OPENAI_API_KEY"]
     return config

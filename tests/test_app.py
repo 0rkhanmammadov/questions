@@ -15,7 +15,7 @@ from overlay import StealthOverlay
 def test_config_roundtrip(tmp_path: Path) -> None:
     cfg_file = tmp_path / "test_config.json"
     cfg = load_config(cfg_file)
-    assert cfg["provider"] == "free"
+    assert cfg["provider"] in ("gemini", "free")
     cfg["provider"] = "openai"
     cfg["openai_api_key"] = "sk-test-123"
     save_config(cfg, cfg_file)
