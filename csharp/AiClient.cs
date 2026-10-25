@@ -77,8 +77,23 @@ namespace QuizAssistant
                 text = string.Join(" ", lines).Trim();
             }
 
+            // Multi-select numbers check FIRST: "1, 3, 4" or "1, 2 və 5" or "1-4-5" -> "1-3-4"
+            if (Regex.IsMatch(text, @"^\s*\d{1,2}(?:\s*[,;\-\s]\s*(?:və\s*)?\d{1,2})+\s*$", RegexOptions.IgnoreCase))
+            {
+                MatchCollection mc = Regex.Matches(text, @"\b\d{1,2}\b");
+                List<string> digits = new List<string>();
+                foreach (Match dm in mc)
+                {
+                    digits.Add(dm.Value);
+                }
+                if (digits.Count >= 2)
+                {
+                    return string.Join("-", digits.ToArray());
+                }
+            }
+
             // Strip leading question numbers e.g. "14) ", "14. "
-            text = Regex.Replace(text, @"^\d{1,3}\s*[\.\)\-:]\s*", "").Trim();
+            text = Regex.Replace(text, @"^\d{1,3}\s*[\.\)\:]\s*", "").Trim();
 
             // Strip leading option letters e.g. "A) ", "B. ", "C: ", "d - "
             text = Regex.Replace(text, @"^[A-Za-z\u0400-\u04FF]\s*[\.\)\-:]\s*", "").Trim();
@@ -113,7 +128,11 @@ namespace QuizAssistant
             string url = string.Format("https://{0}/v1beta/models/{1}:generateContent?key={2}", ip, model, apiKey);
 
             string strictUser = string.Format(
-                "Sual:\n{0}\n\nQAYDALAR:\n1. QƏTİYYƏN 'A)', 'B)', 'C)' kimi variant hərfi və ya nömrə YAZMA!\n2. Yalnız doğru variantdakı mətni / sözü / cümləni yaz (məsələn: 'A) Bakı' əvəzinə birbaşa 'Bakı').\n3. Əlavə izahat, şərh yazma.",
+                "Sual:\n{0}\n\nQAYDALAR:\n" +
+                "1. Təkseçimlidirsə: QƏTİYYƏN variant hərfi (A, B, C...) yazma, yalnız variantdakı sözü/mətni yaz (məsələn: 'Bakı').\n" +
+                "2. Çoxseçimlidirsə (məsələn 1, 2, 3, 4, 5 bəndlərindən bir neçəsi doğrudursa): Yalnız doğru rəqəmləri tire ilə birləşdirərək yaz (məsələn: '1-3-4' və ya '1-2-5'). Heç bir söz və hərf əlavə etmə!\n" +
+                "3. Uyğunluqdursa: '1-a, 2-c, 3-b' kimi yaz.\n" +
+                "4. Qətiyyən izahat, şərh yazma. Yalnız birbaşa cavabı ver.",
                 cleaned
             );
 
@@ -169,10 +188,10 @@ namespace QuizAssistant
             string userInstruction =
                 "Sən imtahan ekspertisən. Şəkildəki sualı və variantları diqqətlə oxu, ən doğru cavabı tap.\n" +
                 "QAYDALAR:\n" +
-                "1. QƏTİYYƏN 'A)', 'B)', 'C)' kimi variant hərfi və ya sual nömrəsi YAZMA!\n" +
-                "2. Yalnız doğru variantın içindəki mətni / sözü / cümləni yaz (məsələn: 'A) Bakı' əvəzinə birbaşa 'Bakı').\n" +
-                "3. Çoxseçimlidirsə: Bütün doğru bəndlərin sözlərini/cümlələrini yaz.\n" +
-                "4. Qətiyyən əlavə izahat və ya nəzəri şərh yazma. Yalnız variantdakı sözləri ver!";
+                "1. Təkseçimlidirsə: QƏTİYYƏN variant hərfi (A, B, C...) yazma, yalnız variantdakı sözü/mətni yaz (məsələn: 'Bakı').\n" +
+                "2. Çoxseçimlidirsə (bir neçə bənd seçilməlidirsə): Yalnız doğru rəqəmləri tire ilə birləşdirərək yaz (məsələn: '1-3-4' və ya '1-2-5'). Heç bir söz və hərf əlavə etmə!\n" +
+                "3. Uyğunluq sualıdırsa: '1-a, 2-c, 3-b' kimi yaz.\n" +
+                "4. Qətiyyən əlavə izahat və ya nəzəri şərh yazma. Yalnız cavabı ver!";
 
             var payloadObj = new Dictionary<string, object>
             {

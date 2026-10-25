@@ -43,9 +43,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "history_enabled": True,
     "local_db_enabled": True,
     "system_prompt": (
-        "QAYDA: QƏTİYYƏN variant hərfi (A, B, C...) və ya sual nömrəsi YAZMA! "
-        "Yalnız doğru variantdakı sözü, mətni və ya cümləni yaz (Məsələn: 'A) Bakı' əvəzinə birbaşa 'Bakı'). "
-        "Heç bir izahat və şərh yazma."
+        "QAYDALAR:\n"
+        "1. Təkseçimlidirsə: QƏTİYYƏN variant hərfi (A, B, C...) yazma, yalnız variantdakı sözü/mətni yaz (məsələn: 'Bakı').\n"
+        "2. Çoxseçimlidirsə (bir neçə bənd seçilməlidirsə): Doğru rəqəmləri tire ilə yaz (məsələn: '1-3-4' və ya '1-2-5').\n"
+        "3. Uyğunluq sualıdırsa: '1-a, 2-c, 3-b' kimi yaz.\n"
+        "4. Qətiyyən izahat, şərh yazma. Yalnız cavabı ver!"
     ),
 }
 

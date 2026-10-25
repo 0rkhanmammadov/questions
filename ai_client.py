@@ -334,9 +334,10 @@ def solve_text(question_text: str, config: Dict[str, Any]) -> str:
     strict_user = (
         f"Sual:\n{cleaned_q}\n\n"
         "QAYDALAR:\n"
-        "1. QƏTİYYƏN 'A)', 'B)', 'C)' kimi variant hərfi və ya nömrə YAZMA!\n"
-        "2. Yalnız doğru variantdakı mətni / sözü / cümləni yaz (məsələn: 'A) Bakı' əvəzinə birbaşa 'Bakı').\n"
-        "3. Əlavə izahat, şərh yazma."
+        "1. Təkseçimlidirsə: QƏTİYYƏN variant hərfi (A, B, C...) yazma, yalnız variantdakı sözü/mətni yaz (məsələn: 'Bakı').\n"
+        "2. Çoxseçimlidirsə (bir neçə bənd seçilməlidirsə): Doğru rəqəmləri tire ilə yaz (məsələn: '1-3-4' və ya '1-2-5').\n"
+        "3. Uyğunluq sualıdırsa: '1-a, 2-c, 3-b' kimi yaz.\n"
+        "4. Qətiyyən izahat, şərh yazma. Yalnız cavabı ver!"
     )
 
     if provider == "openai":
@@ -413,10 +414,10 @@ def solve_image(image_bytes: bytes, config: Dict[str, Any]) -> str:
     user_instruction = (
         "Sən imtahan ekspertisən. Şəkildəki sualı və variantları diqqətlə oxu, ən doğru cavabı tap.\n"
         "QAYDALAR:\n"
-        "1. QƏTİYYƏN 'A)', 'B)', 'C)' kimi variant hərfi və ya sual nömrəsi YAZMA!\n"
-        "2. Yalnız doğru variantın içindəki mətni / sözü / cümləni yaz (məsələn: 'A) Bakı' əvəzinə birbaşa 'Bakı').\n"
-        "3. Çoxseçimlidirsə: Bütün doğru bəndlərin sözlərini/cümlələrini yaz.\n"
-        "4. Qətiyyən əlavə izahat və ya nəzəri şərh yazma. Yalnız variantdakı sözləri ver!"
+        "1. Təkseçimlidirsə: QƏTİYYƏN variant hərfi (A, B, C...) yazma, yalnız variantdakı sözü/mətni yaz (məsələn: 'Bakı').\n"
+        "2. Çoxseçimlidirsə (bir neçə bənd seçilməlidirsə): Doğru rəqəmləri tire ilə birləşdirərək yaz (məsələn: '1-3-4' və ya '1-2-5'). Heç bir söz və hərf əlavə etmə!\n"
+        "3. Uyğunluq sualıdırsa: '1-a, 2-c, 3-b' kimi yaz.\n"
+        "4. Qətiyyən əlavə izahat və ya nəzəri şərh yazma. Yalnız cavabı ver!"
     )
 
     if provider == "openai":
