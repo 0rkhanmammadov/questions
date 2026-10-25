@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FP Panel</string>
+    <string name="service_name">Fingerprint Gesture Service</string>
+    <string name="service_desc">Barmaq izi sensorunu aşağı sürüşdürdükdə bildiriş pərdəsini açır.</string>
+</resources>
