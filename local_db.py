@@ -1,12 +1,27 @@
 import math
 import os
 import re
+import sys
 from collections import Counter
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-DEFAULT_DB_PATH = Path(__file__).resolve().parent / "baza.txt"
+
+def get_default_db_path() -> Path:
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        if (exe_dir / "baza.txt").exists():
+            return exe_dir / "baza.txt"
+        if hasattr(sys, "_MEIPASS"):
+            bundled = Path(sys._MEIPASS) / "baza.txt"
+            if bundled.exists():
+                return bundled
+        return exe_dir / "baza.txt"
+    return Path(__file__).resolve().parent / "baza.txt"
+
+
+DEFAULT_DB_PATH = get_default_db_path()
 
 STOP_WORDS = {
     "və", "ve", "ilə", "ile", "bu", "o", "bir", "üçün", "ucun",
@@ -179,7 +194,7 @@ def _get_or_build_index(db_path: Path) -> Optional[BM25Index]:
 
 
 def search_local_db(question_text: str, db_path: Path | str | None = None) -> Optional[str]:
-    target = Path(db_path) if db_path else DEFAULT_DB_PATH
+    target = Path(db_path) if db_path else get_default_db_path()
     index = _get_or_build_index(target)
     if not index or index.N == 0:
         return None

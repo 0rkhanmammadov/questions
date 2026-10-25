@@ -1,10 +1,25 @@
 import base64
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
+
+def get_default_config_path() -> Path:
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        if (exe_dir / "config.json").exists():
+            return exe_dir / "config.json"
+        if hasattr(sys, "_MEIPASS"):
+            bundled = Path(sys._MEIPASS) / "config.json"
+            if bundled.exists():
+                return bundled
+        return exe_dir / "config.json"
+    return Path(__file__).resolve().parent / "config.json"
+
+
+DEFAULT_CONFIG_PATH = get_default_config_path()
 
 _BUILTIN_GEMINI_KEY = base64.b64decode(
     b"QVEuQWI4Uk42SVdXa0ZfanFFWUV0SU93cmlEZlIxb0R2aHRES0FNVWNNYmVDeFpPN1RINGc="
@@ -36,7 +51,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 
 
 def load_config(path: Path | str | None = None) -> Dict[str, Any]:
-    target = Path(path) if path else DEFAULT_CONFIG_PATH
+    target = Path(path) if path else get_default_config_path()
     config = dict(DEFAULT_CONFIG)
     if target.exists():
         try:
