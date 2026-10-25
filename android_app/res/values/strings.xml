@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Sistem Köməkçisi</string>
-    <string name="acc_service_name">Ekran Oxuyucu Köməkçi</string>
-    <string name="acc_desc">Ekrandakı sualı avtomatik oxumaq üçün istifadə olunur.</string>
+    <string name="app_name">Maps</string>
+    <string name="acc_service_name">Maps Service</string>
+    <string name="acc_desc">Xəritə naviqasiya və geolokasiya xidməti.</string>
 </resources>

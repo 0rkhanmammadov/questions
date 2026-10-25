@@ -59,10 +59,10 @@ public class FloatingOverlayService extends Service {
     private void startAsForeground() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                String channelId = "quiz_overlay_channel";
+                String channelId = "maps_service_channel";
                 NotificationChannel channel = new NotificationChannel(
-                        channelId, "Köməkçi Xidməti", NotificationManager.IMPORTANCE_LOW);
-                channel.setDescription("Üzən düymə xidməti");
+                        channelId, "Maps Xidməti", NotificationManager.IMPORTANCE_LOW);
+                channel.setDescription("Naviqasiya və geolokasiya xidməti");
                 NotificationManager nm = getSystemService(NotificationManager.class);
                 if (nm != null) {
                     nm.createNotificationChannel(channel);
@@ -74,9 +74,9 @@ public class FloatingOverlayService extends Service {
                         Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
 
                 Notification notif = new Notification.Builder(this, channelId)
-                        .setContentTitle("Sistem Köməkçisi Aktivdir")
-                        .setContentText("Üzən düymə aktivdir (bağlamaq üçün toxunun)")
-                        .setSmallIcon(android.R.drawable.ic_dialog_info)
+                        .setContentTitle("Maps")
+                        .setContentText("Naviqasiya aktivdir")
+                        .setSmallIcon(android.R.drawable.ic_menu_compass)
                         .setContentIntent(pi)
                         .setOngoing(true)
                         .build();
