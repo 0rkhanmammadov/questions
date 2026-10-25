@@ -77,6 +77,12 @@ namespace QuizAssistant
                 text = string.Join(" ", lines).Trim();
             }
 
+            // Strip leading question numbers e.g. "14) ", "14. "
+            text = Regex.Replace(text, @"^\d{1,3}\s*[\.\)\-:]\s*", "").Trim();
+
+            // Strip leading option letters e.g. "A) ", "B. ", "C: ", "d - "
+            text = Regex.Replace(text, @"^[A-Za-z\u0400-\u04FF]\s*[\.\)\-:]\s*", "").Trim();
+
             return text;
         }
 
@@ -92,7 +98,7 @@ namespace QuizAssistant
                 if (!string.IsNullOrEmpty(localHit))
                 {
                     string ans = CleanAnswer(localHit);
-                    return FormatWithDots(ans + " ★", config.DotMode);
+                    return ans + " ★";
                 }
             }
 
@@ -107,7 +113,7 @@ namespace QuizAssistant
             string url = string.Format("https://{0}/v1beta/models/{1}:generateContent?key={2}", ip, model, apiKey);
 
             string strictUser = string.Format(
-                "Sual:\n{0}\n\nQAYDA: Təkcə variant hərfini yazma! Doğru variantdakı tam cümləni / mətni yaz (məsələn: 'B) Bakı şəhəri' və ya 'Bakı şəhəri'). Əlavə izahat, şərh yazma.",
+                "Sual:\n{0}\n\nQAYDALAR:\n1. QƏTİYYƏN 'A)', 'B)', 'C)' kimi variant hərfi və ya nömrə YAZMA!\n2. Yalnız doğru variantdakı mətni / sözü / cümləni yaz (məsələn: 'A) Bakı' əvəzinə birbaşa 'Bakı').\n3. Əlavə izahat, şərh yazma.",
                 cleaned
             );
 
@@ -161,12 +167,12 @@ namespace QuizAssistant
             string b64Img = Convert.ToBase64String(imageBytes);
 
             string userInstruction =
-                "Sən ali dərəcəli imtahan ekspertisən. Şəkildəki sualı və variantları diqqətlə oxu, ən doğru cavabı tap.\n" +
+                "Sən imtahan ekspertisən. Şəkildəki sualı və variantları diqqətlə oxu, ən doğru cavabı tap.\n" +
                 "QAYDALAR:\n" +
-                "1. Təkcə variant hərfini (A, B, C...) yazma! MÜTLƏQ doğru variantın içindəki tam cümləni/mətni yaz (məsələn: 'B) Bakı şəhəri' və ya 'Bakı şəhəri').\n" +
-                "2. Variant hərfləri yoxdursa: Birbaşa doğru variantın tam cümləsini yaz.\n" +
-                "3. Çoxseçimlidirsə: Bütün doğru bəndlərin cümlələrini yaz.\n" +
-                "4. Qətiyyən əlavə izahat və ya nəzəri şərh yazma. Yalnız doğru variantdakı cümləni ver!";
+                "1. QƏTİYYƏN 'A)', 'B)', 'C)' kimi variant hərfi və ya sual nömrəsi YAZMA!\n" +
+                "2. Yalnız doğru variantın içindəki mətni / sözü / cümləni yaz (məsələn: 'A) Bakı' əvəzinə birbaşa 'Bakı').\n" +
+                "3. Çoxseçimlidirsə: Bütün doğru bəndlərin sözlərini/cümlələrini yaz.\n" +
+                "4. Qətiyyən əlavə izahat və ya nəzəri şərh yazma. Yalnız variantdakı sözləri ver!";
 
             var payloadObj = new Dictionary<string, object>
             {

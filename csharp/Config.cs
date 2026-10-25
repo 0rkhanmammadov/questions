@@ -32,7 +32,7 @@ namespace QuizAssistant
             PositionMode = "cursor";
             DotMode = "off";
             LocalDbEnabled = true;
-            SystemPrompt = "QAYDA: Yalnız doğru cavab variantındakı tam cümləni / mətni yaz. Təkcə 'B' və ya 'C' hərfi yazma, mütləq variantdakı cümləni də daxil et (Məsələn: 'B) Prosessor hesablama aparır' və ya 'Bakı şəhəri'). Əlavə izahat, şərh yazma, yalnız variantdakı cümləni ver.";
+            SystemPrompt = "QAYDA: QƏTİYYƏN variant hərfi (A, B, C...) və ya sual nömrəsi YAZMA! Yalnız doğru variantdakı sözü, mətni və ya cümləni yaz (Məsələn: 'A) Bakı' əvəzinə birbaşa 'Bakı'). Heç bir izahat və şərh yazma.";
         }
 
         public static AppConfig Load()
