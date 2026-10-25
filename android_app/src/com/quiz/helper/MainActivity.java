@@ -22,6 +22,12 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // Ensure any legacy floating dot service is killed
+        try {
+            stopService(new Intent(this, FloatingOverlayService.class));
+            getSharedPreferences("quiz_prefs", MODE_PRIVATE).edit().putBoolean("show_floating_dot", false).apply();
+        } catch (Exception ignored) {}
+
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.parseColor("#121215"));
 
