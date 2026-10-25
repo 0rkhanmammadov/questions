@@ -48,15 +48,13 @@ public class AiSolver {
                 final String trimmedQ = q.length() > 2000 ? q.substring(0, 2000) : q;
                 final int nonce = 1000000 + new Random().nextInt(8999999);
                 final String strictPrompt =
-                        "Sən ali dərəcəli imtahan və test ekspertisən.\n" +
-                        "Sualı və variantları diqqətlə oxu, dərindən düşün və ən doğru cavabı tap.\n\n" +
+                        "Sən imtahan ekspertisən. Sualı və variantları diqqətlə oxu, ən doğru cavabı tap.\n\n" +
                         "QAYDALAR:\n" +
-                        "1. Sualda A, B, C, D, E variantları varsa: Yalnız sualın nömrəsini (əgər varsa) və doğru variant hərfini yaz (Məsələn: 14) B və ya B).\n" +
-                        "2. Variant hərfləri yoxdursa (yalnız mətn variantlarıdırsa): Doğru variantın mətnini qısa və dəqiq yaz (Məsələn: 14) Prosessor və ya Prosessor).\n" +
-                        "3. Çoxseçimlidirsə (birdən çox doğru cavab varsa, məsələn 3 doğru cavab): Bütün doğru variantları/nömrələri ardıcıl yaz (Məsələn: 1, 2, 4 və ya 14) 1, 2, 4 və ya A, C, D).\n" +
-                        "4. Uyğunluqdursa: '1-a, 2-c, 3-b' kimi yaz.\n" +
-                        "5. Açıq sualdırsa: Birbaşa qısa cavab sözü və ya rəqəmi yaz.\n" +
-                        "6. QƏTİYYƏN heç bir izahat və ya əlavə cümlə YAZMA. Yalnız tək və dəqiq cavab!\n\n" +
+                        "1. Təkseçimlidirsə: QƏTİYYƏN 'A)', 'B)', 'C)' kimi variant hərfi və ya sual nömrəsi YAZMA! Yalnız doğru variantdakı mətni / sözü / cümləni yaz (məsələn: 'A) Bakı' əvəzinə birbaşa 'Bakı').\n" +
+                        "2. Çoxseçimlidirsə (bir neçə bənd seçilməlidirsə): Yalnız doğru rəqəmləri tire ilə birləşdirərək yaz (məsələn: '1-3-4' və ya '1-2-5'). Heç bir əlavə söz və ya hərf yazma!\n" +
+                        "3. Uyğunluq sualıdırsa: '1-a, 2-c, 3-b' kimi yaz.\n" +
+                        "4. Açıq sualdırsa: Birbaşa qısa cavab sözü və ya rəqəmi yaz.\n" +
+                        "5. QƏTİYYƏN heç bir izahat və ya əlavə cümlə YAZMA. Yalnız birbaşa cavab!\n\n" +
                         "Sual:\n" + trimmedQ + "\n\nCavab:";
 
                 String gAns = queryGemini(strictPrompt, trimmedQ);
@@ -170,14 +168,12 @@ public class AiSolver {
             conn.setRequestProperty("x-goog-api-key", GEMINI_KEY);
             conn.setDoOutput(true);
 
-            String prompt = "Sən ali dərəcəli imtahan və test ekspertisən. Şəkildəki sualı və variantları diqqətlə oxu, ən doğru cavabı tap.\n\n" +
+            String prompt = "Sən imtahan ekspertisən. Şəkildəki sualı və variantları diqqətlə oxu, ən doğru cavabı tap.\n\n" +
                     "QAYDALAR:\n" +
-                    "1. Sualda A, B, C, D, E variantları varsa: Yalnız sualın nömrəsini (əgər varsa) və doğru variant hərfini yaz (məs: 14) B və ya B).\n" +
-                    "2. Variant hərfləri yoxdursa: Doğru variantın mətnini qısa və dəqiq yaz (məs: 14) Prosessor və ya Prosessor).\n" +
-                    "3. Çoxseçimlidirsə (məs. 3 doğru cavab): Bütün doğru variantları/nömrələri ardıcıl yaz (məs: 1, 2, 4 və ya 14) 1, 2, 4 və ya A, C, D).\n" +
-                    "4. Uyğunluqdursa: '1-a, 2-c, 3-b' kimi yaz.\n" +
-                    "5. Açıq sualdırsa: Birbaşa qısa cavab sözü və ya rəqəmi yaz.\n" +
-                    "6. Qətiyyən heç bir izahat YAZMA. Yalnız tək və dəqiq cavab!";
+                    "1. Təkseçimlidirsə: QƏTİYYƏN variant hərfi (A, B, C...) və ya nömrə yazma, yalnız variantdakı sözü/mətni yaz (məsələn: 'Bakı').\n" +
+                    "2. Çoxseçimlidirsə (bir neçə bənd seçilməlidirsə): Yalnız doğru rəqəmləri tire ilə birləşdirərək yaz (məsələn: '1-3-4' və ya '1-2-5'). Heç bir söz və hərf əlavə etmə!\n" +
+                    "3. Uyğunluq sualıdırsa: '1-a, 2-c, 3-b' kimi yaz.\n" +
+                    "4. Qətiyyən əlavə izahat və ya nəzəri şərh yazma. Yalnız cavabı ver!";
 
             if (hintText != null && hintText.trim().length() > 6) {
                 prompt += "\n\n(Fokus sual: \"" + hintText.trim() + "\")\nEkrandakı bu sualı və bütün variantları oxuyub ən doğru cavabı tap.";
@@ -419,68 +415,27 @@ public class AiSolver {
         // Strip prefixes like "Doğru cavab:", "Cavab:"
         first = first.replaceAll("(?i)^(?:Düzgün\\s+cavab|Doğru\\s+cavab|Cavab|Doğru\\s+variant|Answer|Correct\\s+answer)\\s*[:\\-]\\s*", "").trim();
 
-        String qNum = extractQuestionNum(qText);
-
-        // Numbered answer like "14) B" or "14. Prosessor"
-        Matcher mAnsQNum = Pattern.compile("^(\\d{1,3})\\s*[\\)\\.:]\\s*(.+)$").matcher(first);
-        if (mAnsQNum.find()) {
-            String ansNum = mAnsQNum.group(1);
-            String ansBody = mAnsQNum.group(2).trim();
-            Matcher mBodyOpt = Pattern.compile("^([A-Ea-e])(?:\\s*[\\)\\.\\-:]|\\s*$)").matcher(ansBody);
-            if (mBodyOpt.find()) {
-                return ansNum + ") " + mBodyOpt.group(1).toUpperCase();
-            }
-            if (ansBody.matches("^\\d+(?:\\s*[,;\\-\\s]\\s*\\d+)+$")) {
-                Matcher mn = Pattern.compile("\\d+").matcher(ansBody);
-                StringBuilder sbN = new StringBuilder();
-                while (mn.find()) {
-                    if (sbN.length() > 0) sbN.append("-");
-                    sbN.append(mn.group());
-                }
-                return ansNum + ") " + sbN.toString();
-            }
-            String shortBody = ansBody.length() > 45 ? ansBody.substring(0, 45).trim() : ansBody;
-            return ansNum + ") " + shortBody;
-        }
-
-        // Single letter A, B, C, D, E
-        if (first.matches("^[A-Ea-e]$")) {
-            String letter = first.toUpperCase();
-            return !qNum.isEmpty() ? qNum + ") " + letter : letter;
-        }
-
-        // Multi-letter like A, C, D or A-C-D
-        if (first.matches("^[A-Ea-e](?:\\s*[,;\\-\\s]\\s*[A-Ea-e])+$")) {
-            Matcher ml = Pattern.compile("[A-Ea-e]").matcher(first);
-            StringBuilder sbL = new StringBuilder();
-            while (ml.find()) {
-                if (sbL.length() > 0) sbL.append(", ");
-                sbL.append(ml.group().toUpperCase());
-            }
-            return !qNum.isEmpty() ? qNum + ") " + sbL.toString() : sbL.toString();
-        }
-
-        // Multi-number like 1, 2, 4 or 1-3-5
-        if (first.matches("^\\d+(?:\\s*[,;\\-\\s]\\s*\\d+)+$")) {
-            Matcher mn = Pattern.compile("\\d+").matcher(first);
+        // 1. Multi-select check FIRST: "1, 3, 4" or "1, 2 və 5" or "1-4-5" -> "1-3-4"
+        if (first.matches("^\\s*\\d{1,2}(?:\\s*[,;\\-\\s]\\s*(?:və\\s*)?\\d{1,2})+\\s*$")) {
+            Matcher mn = Pattern.compile("\\d{1,2}").matcher(first);
             StringBuilder sbN = new StringBuilder();
+            int count = 0;
             while (mn.find()) {
                 if (sbN.length() > 0) sbN.append("-");
                 sbN.append(mn.group());
+                count++;
             }
-            return !qNum.isEmpty() ? qNum + ") " + sbN.toString() : sbN.toString();
+            if (count >= 2) {
+                return sbN.toString();
+            }
         }
 
-        // Matching like 1-a, 2-c, 3-b
-        if (Pattern.compile("\\b\\d+\\s*[\\-:]\\s*[A-Za-z]").matcher(first).find()) {
-            String matchStr = first.length() > 45 ? first.substring(0, 45).trim() : first;
-            return (!qNum.isEmpty() && !matchStr.startsWith(qNum + ")")) ? qNum + ") " + matchStr : matchStr;
-        }
+        // 2. Strip leading question numbers e.g. "14) ", "14. "
+        first = first.replaceAll("^\\d{1,3}\\s*[\\.\\)\\:]\\s*", "").trim();
 
-        String shortAns = first.length() > 45 ? first.substring(0, 45).trim() : first;
-        if (!qNum.isEmpty() && !shortAns.startsWith(qNum + ")")) {
-            return qNum + ") " + shortAns;
-        }
-        return shortAns;
+        // 3. Strip leading option letters e.g. "A) ", "B. ", "C: ", "d - "
+        first = first.replaceAll("^[A-Za-z\\u0400-\\u04FF]\\s*[\\.\\)\\-:]\\s*", "").trim();
+
+        return first;
     }
 }
