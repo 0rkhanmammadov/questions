@@ -43,9 +43,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "history_enabled": True,
     "local_db_enabled": True,
     "system_prompt": (
-        "QAYDA: Heç bir izahat, cümlə və ya söz YAZMA! "
-        "Yalnız sualın nömrəsini (əgər varsa) və doğru variant hərfini və ya rəqəmləri yaz. "
-        "Nümunə: '14) B' və ya '15) 1-2-3' və ya 'C'."
+        "QAYDA: Yalnız doğru cavab variantındakı tam cümləni / mətni yaz. "
+        "Təkcə variant hərfini yazma, mütləq variantdakı cümləni də ver (Məsələn: 'B) Bakı şəhəri' və ya 'Bakı şəhəri'). "
+        "Əlavə izahat, nəzəri şərh yazma, yalnız variantdakı cümləni ver."
     ),
 }
 

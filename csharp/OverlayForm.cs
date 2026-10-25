@@ -61,6 +61,7 @@ namespace QuizAssistant
                 ForeColor = Color.FromArgb(244, 244, 245),
                 Font = new Font("Segoe UI", (float)config.FontSize, FontStyle.Bold),
                 AutoSize = true,
+                MaximumSize = new Size(460, 0),
                 Location = new Point(26, 11),
                 BackColor = Color.Transparent
             };
@@ -132,8 +133,9 @@ namespace QuizAssistant
 
         private void AdjustSize()
         {
-            int requiredWidth = lblAnswer.Location.X + lblAnswer.PreferredWidth + 16;
-            this.Width = Math.Max(140, Math.Min(420, requiredWidth));
+            int requiredWidth = Math.Max(160, Math.Min(520, lblAnswer.Location.X + lblAnswer.PreferredWidth + 16));
+            int requiredHeight = Math.Max(42, lblAnswer.Location.Y + lblAnswer.PreferredHeight + 14);
+            this.Size = new Size(requiredWidth, requiredHeight);
         }
 
         protected override void OnPaint(PaintEventArgs e)
