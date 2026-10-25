@@ -9,11 +9,14 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
+import android.widget.Toast;
 
 public class FingerprintService extends AccessibilityService {
 
     public static volatile FingerprintService instance;
+    public static volatile String lastEventInfo = "Hələ hadisə qeydə alınmayıb";
     private FingerprintGestureController gestureController;
     private FingerprintGestureCallback gestureCallback;
     private Vibrator vibrator;
@@ -28,6 +31,7 @@ public class FingerprintService extends AccessibilityService {
             AccessibilityServiceInfo info = getServiceInfo();
             if (info != null) {
                 info.flags |= AccessibilityServiceInfo.FLAG_REQUEST_FINGERPRINT_GESTURES;
+                info.flags |= AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
                 setServiceInfo(info);
             }
         } catch (Exception ignored) {}
@@ -42,6 +46,7 @@ public class FingerprintService extends AccessibilityService {
                         }
 
                         public void onGestureDetectionAvailabilityChanged(boolean available) {
+                            lastEventInfo = "Jest sensor statusu dəyişdi: " + (available ? "Aktiv" : "Deaktiv");
                         }
                     };
                     gestureController.registerFingerprintGestureCallback(gestureCallback, new Handler(Looper.getMainLooper()));
@@ -51,17 +56,40 @@ public class FingerprintService extends AccessibilityService {
     }
 
     private void handleGesture(int gesture) {
+        String gestureName = "Bilinməyən (" + gesture + ")";
         if (gesture == FingerprintGestureController.FINGERPRINT_GESTURE_SWIPE_DOWN) {
+            gestureName = "AŞAĞI SÜRÜŞDÜRMƏ (Açılır)";
             triggerVibration();
             performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS);
         } else if (gesture == FingerprintGestureController.FINGERPRINT_GESTURE_SWIPE_UP) {
+            gestureName = "YUXARI SÜRÜŞDÜRMƏ (Bağlanır)";
             triggerVibration();
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE);
             } else {
                 performGlobalAction(GLOBAL_ACTION_BACK);
             }
+        } else if (gesture == FingerprintGestureController.FINGERPRINT_GESTURE_SWIPE_LEFT) {
+            gestureName = "SOLA SÜRÜŞDÜRMƏ";
+        } else if (gesture == FingerprintGestureController.FINGERPRINT_GESTURE_SWIPE_RIGHT) {
+            gestureName = "SAĞA SÜRÜŞDÜRMƏ";
         }
+
+        lastEventInfo = "Son jest: " + gestureName;
+        final String msg = "Jest qəbul edildi: " + gestureName;
+        new Handler(Looper.getMainLooper()).post(() -> {
+            try {
+                Toast.makeText(getApplicationContext(), msg, Toast.LENGTH_SHORT).show();
+            } catch (Exception ignored) {}
+        });
+    }
+
+    @Override
+    protected boolean onKeyEvent(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            lastEventInfo = "Düymə sıxıldı: KeyCode " + event.getKeyCode();
+        }
+        return super.onKeyEvent(event);
     }
 
     private void triggerVibration() {
@@ -98,12 +126,19 @@ public class FingerprintService extends AccessibilityService {
         super.onDestroy();
     }
 
-    public boolean isHardwareSupported() {
-        if (gestureController != null) {
-            try {
-                return gestureController.isGestureDetectionAvailable();
-            } catch (Exception ignored) {}
+    public String getDiagnosticStatus() {
+        if (gestureController == null) {
+            return "✕ Controller mövcud deyil";
         }
-        return false;
+        try {
+            boolean avail = gestureController.isGestureDetectionAvailable();
+            if (avail) {
+                return "✓ Sensor sürüşdürmə jestini tam dəstəkləyir";
+            } else {
+                return "✕ Cihaz / Driver jest dəstəyini bloklayır (isGestureDetectionAvailable = false)";
+            }
+        } catch (Exception e) {
+            return "Xəta: " + e.getMessage();
+        }
     }
 }
