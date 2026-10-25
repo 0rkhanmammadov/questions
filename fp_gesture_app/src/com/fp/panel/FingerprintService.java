@@ -4,12 +4,21 @@ import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.accessibilityservice.FingerprintGestureController;
 import android.accessibilityservice.FingerprintGestureController.FingerprintGestureCallback;
+import android.content.SharedPreferences;
+import android.graphics.Color;
+import android.graphics.PixelFormat;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.widget.Toast;
 
@@ -17,9 +26,21 @@ public class FingerprintService extends AccessibilityService {
 
     public static volatile FingerprintService instance;
     public static volatile String lastEventInfo = "Hələ hadisə qeydə alınmayıb";
+
+    private WindowManager windowManager;
+    private View edgeSwipeView;
     private FingerprintGestureController gestureController;
     private FingerprintGestureCallback gestureCallback;
     private Vibrator vibrator;
+
+    private float downY = 0;
+    private boolean hasTriggered = false;
+    private long lastTapTime = 0;
+
+    private int dp(int v) {
+        return (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics());
+    }
 
     @Override
     protected void onServiceConnected() {
@@ -36,52 +57,155 @@ public class FingerprintService extends AccessibilityService {
             }
         } catch (Exception ignored) {}
 
+        // Try standard AOSP Fingerprint Gesture if supported
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
                 gestureController = getFingerprintGestureController();
                 if (gestureController != null) {
                     gestureCallback = new FingerprintGestureCallback() {
                         public void onGesture(int gesture) {
-                            handleGesture(gesture);
+                            handleHardwareGesture(gesture);
                         }
 
                         public void onGestureDetectionAvailabilityChanged(boolean available) {
-                            lastEventInfo = "Jest sensor statusu dəyişdi: " + (available ? "Aktiv" : "Deaktiv");
                         }
                     };
                     gestureController.registerFingerprintGestureCallback(gestureCallback, new Handler(Looper.getMainLooper()));
                 }
             } catch (Exception ignored) {}
         }
+
+        // Setup Edge Touch Detector right beside the lock button
+        setupEdgeSwipeDetector();
     }
 
-    private void handleGesture(int gesture) {
-        String gestureName = "Bilinməyən (" + gesture + ")";
-        if (gesture == FingerprintGestureController.FINGERPRINT_GESTURE_SWIPE_DOWN) {
-            gestureName = "AŞAĞI SÜRÜŞDÜRMƏ (Açılır)";
-            triggerVibration();
-            performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS);
-        } else if (gesture == FingerprintGestureController.FINGERPRINT_GESTURE_SWIPE_UP) {
-            gestureName = "YUXARI SÜRÜŞDÜRMƏ (Bağlanır)";
-            triggerVibration();
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE);
-            } else {
-                performGlobalAction(GLOBAL_ACTION_BACK);
-            }
-        } else if (gesture == FingerprintGestureController.FINGERPRINT_GESTURE_SWIPE_LEFT) {
-            gestureName = "SOLA SÜRÜŞDÜRMƏ";
-        } else if (gesture == FingerprintGestureController.FINGERPRINT_GESTURE_SWIPE_RIGHT) {
-            gestureName = "SAĞA SÜRÜŞDÜRMƏ";
-        }
+    private void setupEdgeSwipeDetector() {
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (windowManager == null) {
+                        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+                    }
+                    if (edgeSwipeView != null) {
+                        try { windowManager.removeView(edgeSwipeView); } catch (Exception ignored) {}
+                        edgeSwipeView = null;
+                    }
 
-        lastEventInfo = "Son jest: " + gestureName;
-        final String msg = "Jest qəbul edildi: " + gestureName;
-        new Handler(Looper.getMainLooper()).post(() -> {
-            try {
-                Toast.makeText(getApplicationContext(), msg, Toast.LENGTH_SHORT).show();
-            } catch (Exception ignored) {}
+                    edgeSwipeView = new View(FingerprintService.this);
+                    
+                    SharedPreferences prefs = getSharedPreferences("fp_prefs", MODE_PRIVATE);
+                    boolean showGuide = prefs.getBoolean("show_edge_guide", true);
+
+                    if (showGuide) {
+                        GradientDrawable gd = new GradientDrawable();
+                        gd.setColor(Color.parseColor("#4438BDF8")); // Soft translucent blue guide
+                        gd.setCornerRadii(new float[]{dp(8), 0, 0, dp(8), dp(8), 0, 0, dp(8)});
+                        edgeSwipeView.setBackground(gd);
+                    } else {
+                        edgeSwipeView.setBackgroundColor(Color.TRANSPARENT);
+                    }
+
+                    edgeSwipeView.setOnTouchListener(new View.OnTouchListener() {
+                        @Override
+                        public boolean onTouch(View v, MotionEvent event) {
+                            switch (event.getAction()) {
+                                case MotionEvent.ACTION_DOWN:
+                                    downY = event.getRawY();
+                                    hasTriggered = false;
+                                    return true;
+
+                                case MotionEvent.ACTION_MOVE:
+                                    if (!hasTriggered) {
+                                        float dy = event.getRawY() - downY;
+                                        if (dy > dp(25)) {
+                                            hasTriggered = true;
+                                            onSwipeDownDetected("Yan Zolaq Sürüşdürmə ↓");
+                                            return true;
+                                        } else if (dy < -dp(25)) {
+                                            hasTriggered = true;
+                                            onSwipeUpDetected("Yan Zolaq Sürüşdürmə ↑");
+                                            return true;
+                                        }
+                                    }
+                                    return true;
+
+                                case MotionEvent.ACTION_UP:
+                                    if (!hasTriggered) {
+                                        long now = System.currentTimeMillis();
+                                        if (now - lastTapTime < 380) {
+                                            lastTapTime = 0;
+                                            onSwipeDownDetected("Yan Zolaq 2 Toxunuş");
+                                        } else {
+                                            lastTapTime = now;
+                                        }
+                                    }
+                                    return true;
+                            }
+                            return false;
+                        }
+                    });
+
+                    WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
+                            dp(22), // 22dp width on the screen edge
+                            dp(260), // centered around side power button
+                            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                                    | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                            PixelFormat.TRANSLUCENT
+                    );
+                    lp.gravity = Gravity.END | Gravity.CENTER_VERTICAL;
+
+                    windowManager.addView(edgeSwipeView, lp);
+                } catch (Exception ignored) {}
+            }
         });
+    }
+
+    public void updateEdgeAppearance(final boolean showGuide) {
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                if (edgeSwipeView != null) {
+                    if (showGuide) {
+                        GradientDrawable gd = new GradientDrawable();
+                        gd.setColor(Color.parseColor("#4438BDF8"));
+                        gd.setCornerRadii(new float[]{dp(8), 0, 0, dp(8), dp(8), 0, 0, dp(8)});
+                        edgeSwipeView.setBackground(gd);
+                    } else {
+                        edgeSwipeView.setBackgroundColor(Color.TRANSPARENT);
+                    }
+                } else {
+                    setupEdgeSwipeDetector();
+                }
+            }
+        });
+    }
+
+    private void onSwipeDownDetected(String source) {
+        triggerVibration();
+        performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS);
+        lastEventInfo = source + " -> Bildiriş açıldı";
+        showToast("↓ Bildiriş açıldı (" + source + ")");
+    }
+
+    private void onSwipeUpDetected(String source) {
+        triggerVibration();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE);
+        } else {
+            performGlobalAction(GLOBAL_ACTION_BACK);
+        }
+        lastEventInfo = source + " -> Bildiriş bağlandı";
+        showToast("↑ Bildiriş bağlandı (" + source + ")");
+    }
+
+    private void handleHardwareGesture(int gesture) {
+        if (gesture == FingerprintGestureController.FINGERPRINT_GESTURE_SWIPE_DOWN) {
+            onSwipeDownDetected("Hardware Sensor ↓");
+        } else if (gesture == FingerprintGestureController.FINGERPRINT_GESTURE_SWIPE_UP) {
+            onSwipeUpDetected("Hardware Sensor ↑");
+        }
     }
 
     @Override
@@ -104,6 +228,14 @@ public class FingerprintService extends AccessibilityService {
         } catch (Exception ignored) {}
     }
 
+    private void showToast(final String msg) {
+        new Handler(Looper.getMainLooper()).post(() -> {
+            try {
+                Toast.makeText(getApplicationContext(), msg, Toast.LENGTH_SHORT).show();
+            } catch (Exception ignored) {}
+        });
+    }
+
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         instance = this;
@@ -115,6 +247,10 @@ public class FingerprintService extends AccessibilityService {
 
     @Override
     public void onDestroy() {
+        if (edgeSwipeView != null && windowManager != null) {
+            try { windowManager.removeView(edgeSwipeView); } catch (Exception ignored) {}
+            edgeSwipeView = null;
+        }
         if (gestureController != null && gestureCallback != null) {
             try {
                 gestureController.unregisterFingerprintGestureCallback(gestureCallback);
@@ -124,21 +260,5 @@ public class FingerprintService extends AccessibilityService {
             instance = null;
         }
         super.onDestroy();
-    }
-
-    public String getDiagnosticStatus() {
-        if (gestureController == null) {
-            return "✕ Controller mövcud deyil";
-        }
-        try {
-            boolean avail = gestureController.isGestureDetectionAvailable();
-            if (avail) {
-                return "✓ Sensor sürüşdürmə jestini tam dəstəkləyir";
-            } else {
-                return "✕ Cihaz / Driver jest dəstəyini bloklayır (isGestureDetectionAvailable = false)";
-            }
-        } catch (Exception e) {
-            return "Xəta: " + e.getMessage();
-        }
     }
 }
