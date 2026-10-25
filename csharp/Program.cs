@@ -220,12 +220,8 @@ namespace QuizAssistant
             try
             {
                 Rectangle screen = Screen.PrimaryScreen.Bounds;
-                using (Bitmap bmp = new Bitmap(screen.Width, screen.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+                using (Bitmap bmp = CaptureHelper.CaptureWithBypass(screen))
                 {
-                    using (Graphics g = Graphics.FromImage(bmp))
-                    {
-                        g.CopyFromScreen(0, 0, 0, 0, screen.Size, CopyPixelOperation.SourceCopy);
-                    }
                     using (MemoryStream ms = new MemoryStream())
                     {
                         bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
