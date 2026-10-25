@@ -273,10 +273,11 @@ class QuizAssistantApp:
             self.overlay.set_error("API açarı yoxdur (Ctrl+Shift+S)")
             self.root.after(200, self.settings_ui.open_or_focus)
         else:
+            self.overlay.set_answer("● Hazır (Ctrl+Shift)")
             sw = self.root.winfo_screenwidth()
             sh = self.root.winfo_screenheight()
             self.root.after(150, lambda: self.overlay.show(sw // 2 - 60, sh // 2 - 20))
-            self.root.after(2000, self.overlay.hide)
+            self.root.after(2200, self.overlay.hide)
         self.root.mainloop()
 
 
