@@ -69,6 +69,7 @@ namespace QuizAssistant
         private const int HK_HIDE = 4;
         private const int HK_DOT = 5;
         private const int HK_QUIT = 6;
+        private const int HK_FULLSCREEN = 7;
 
         [STAThread]
         public static void Main()
@@ -97,6 +98,8 @@ namespace QuizAssistant
             hotkeyWnd.Register(HK_HIDE, HotkeyWindow.MOD_CONTROL | HotkeyWindow.MOD_SHIFT, Keys.H);
             // Ctrl+Shift+D (Toggle Dot Mode)
             hotkeyWnd.Register(HK_DOT, HotkeyWindow.MOD_CONTROL | HotkeyWindow.MOD_SHIFT, Keys.D);
+            // Ctrl+Shift+X (Fullscreen screenshot capture)
+            hotkeyWnd.Register(HK_FULLSCREEN, HotkeyWindow.MOD_CONTROL | HotkeyWindow.MOD_SHIFT, Keys.X);
             // Ctrl+Shift+Q (Quit)
             hotkeyWnd.Register(HK_QUIT, HotkeyWindow.MOD_CONTROL | HotkeyWindow.MOD_SHIFT, Keys.Q);
 
@@ -129,6 +132,9 @@ namespace QuizAssistant
                     break;
                 case HK_DOT:
                     ToggleDotMode();
+                    break;
+                case HK_FULLSCREEN:
+                    CaptureFullscreen();
                     break;
                 case HK_QUIT:
                     ExitApp();
@@ -207,6 +213,49 @@ namespace QuizAssistant
                     }));
                 }
             });
+        }
+
+        private static void CaptureFullscreen()
+        {
+            try
+            {
+                Rectangle screen = Screen.PrimaryScreen.Bounds;
+                using (Bitmap bmp = new Bitmap(screen.Width, screen.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+                {
+                    using (Graphics g = Graphics.FromImage(bmp))
+                    {
+                        g.CopyFromScreen(0, 0, 0, 0, screen.Size, CopyPixelOperation.SourceCopy);
+                    }
+                    using (MemoryStream ms = new MemoryStream())
+                    {
+                        bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                        byte[] pngBytes = ms.ToArray();
+                        Point cursorPt = Cursor.Position;
+                        overlay.Location = new Point(cursorPt.X + 15, cursorPt.Y + 15);
+                        overlay.SetLoading();
+
+                        ThreadPool.QueueUserWorkItem(state =>
+                        {
+                            try
+                            {
+                                string answer = AiClient.SolveImage(pngBytes, config);
+                                overlay.BeginInvoke(new Action(() =>
+                                {
+                                    overlay.SetAnswer(answer, autoHide: false);
+                                }));
+                            }
+                            catch (Exception ex)
+                            {
+                                overlay.BeginInvoke(new Action(() =>
+                                {
+                                    overlay.SetError(ex.Message);
+                                }));
+                            }
+                        });
+                    }
+                }
+            }
+            catch { }
         }
 
         private static void ToggleDotMode()
