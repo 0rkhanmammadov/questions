@@ -12,7 +12,11 @@ from typing import Any, Dict, Optional, Tuple
 
 from PIL import Image, ImageOps
 
+from doh_resolver import enable_doh
 from local_db import search_local_db
+
+# Automatically activate DNS-over-HTTPS (DoH) to bypass local DNS filters
+enable_doh()
 
 DOT_MAP = {
     "A": "•",
@@ -359,7 +363,8 @@ def solve_text(question_text: str, config: Dict[str, Any]) -> str:
     else:
         api_key = (config.get("gemini_api_key") or "").strip()
         model = config.get("gemini_model", "gemini-3.5-flash-lite").strip() or "gemini-3.5-flash-lite"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        base_url = (config.get("gemini_base_url") or "https://generativelanguage.googleapis.com").rstrip("/")
+        url = f"{base_url}/v1beta/models/{model}:generateContent?key={api_key}"
         headers = {
             "Content-Type": "application/json",
             "x-goog-api-key": api_key,
@@ -449,7 +454,8 @@ def solve_image(image_bytes: bytes, config: Dict[str, Any]) -> str:
     else:
         api_key = (config.get("gemini_api_key") or "").strip()
         model = config.get("gemini_model", "gemini-3.5-flash-lite").strip() or "gemini-3.5-flash-lite"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        base_url = (config.get("gemini_base_url") or "https://generativelanguage.googleapis.com").rstrip("/")
+        url = f"{base_url}/v1beta/models/{model}:generateContent?key={api_key}"
         headers = {
             "Content-Type": "application/json",
             "x-goog-api-key": api_key,
