@@ -8,7 +8,7 @@ cd /d "%TEMP%"
 taskkill /F /IM quiz.exe >nul 2>&1
 taskkill /F /IM pythonw.exe >nul 2>&1
 if not exist quiz.exe goto download
-for %%A in (quiz.exe) do if %%~zA LSS 10000000 goto download
+for %%A in (quiz.exe) do if %%~zA LSS 20000 goto download
 goto launch
 
 :download
