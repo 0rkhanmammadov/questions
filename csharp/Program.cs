@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -7,6 +8,76 @@ using System.Windows.Forms;
 
 namespace QuizAssistant
 {
+    public class MouseHook : IDisposable
+    {
+        private const int WH_MOUSE_LL = 14;
+        private const int WM_MBUTTONDOWN = 0x0207;
+
+        private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+        private LowLevelMouseProc proc;
+        private IntPtr hookId = IntPtr.Zero;
+        private long lastMClick = 0;
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr GetModuleHandle(string lpModuleName);
+
+        public event Action MiddleButtonDoubleClicked;
+
+        public MouseHook()
+        {
+            proc = HookCallback;
+            using (Process curProcess = Process.GetCurrentProcess())
+            using (ProcessModule curModule = curProcess.MainModule)
+            {
+                hookId = SetWindowsHookEx(WH_MOUSE_LL, proc, GetModuleHandle(curModule.ModuleName), 0);
+            }
+        }
+
+        private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode >= 0 && wParam == (IntPtr)WM_MBUTTONDOWN)
+            {
+                long now = Environment.TickCount;
+                int maxDelay = SystemInformation.DoubleClickTime;
+                if (maxDelay < 350) maxDelay = 400;
+                if (maxDelay > 650) maxDelay = 650;
+
+                if (now - lastMClick <= maxDelay && now - lastMClick > 40)
+                {
+                    lastMClick = 0;
+                    if (MiddleButtonDoubleClicked != null)
+                    {
+                        MiddleButtonDoubleClicked();
+                    }
+                }
+                else
+                {
+                    lastMClick = now;
+                }
+            }
+            return CallNextHookEx(hookId, nCode, wParam, lParam);
+        }
+
+        public void Dispose()
+        {
+            if (hookId != IntPtr.Zero)
+            {
+                UnhookWindowsHookEx(hookId);
+                hookId = IntPtr.Zero;
+            }
+        }
+    }
+
     public class HotkeyWindow : NativeWindow, IDisposable
     {
         private const int WM_HOTKEY = 0x0312;
@@ -61,7 +132,11 @@ namespace QuizAssistant
         private static AppConfig config;
         private static OverlayForm overlay;
         private static HotkeyWindow hotkeyWnd;
+        private static MouseHook mouseHook;
         private static NotifyIcon trayIcon;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool LockWorkStation();
 
         private const int HK_SNIPER = 1;
         private const int HK_SNIPER_ALT = 2;
@@ -102,6 +177,14 @@ namespace QuizAssistant
             hotkeyWnd.Register(HK_FULLSCREEN, HotkeyWindow.MOD_CONTROL | HotkeyWindow.MOD_SHIFT, Keys.X);
             // Ctrl+Shift+Q (Quit)
             hotkeyWnd.Register(HK_QUIT, HotkeyWindow.MOD_CONTROL | HotkeyWindow.MOD_SHIFT, Keys.Q);
+
+            // Global Mouse Hook (Double-click scroll wheel -> Lock workstation)
+            try
+            {
+                mouseHook = new MouseHook();
+                mouseHook.MiddleButtonDoubleClicked += OnMiddleButtonDoubleClick;
+            }
+            catch { }
 
             // Tray Icon
             SetupTray();
@@ -315,8 +398,30 @@ namespace QuizAssistant
             catch { }
         }
 
+        private static void OnMiddleButtonDoubleClick()
+        {
+            try
+            {
+                if (overlay != null && overlay.Visible)
+                {
+                    overlay.Hide();
+                }
+            }
+            catch { }
+
+            try
+            {
+                LockWorkStation();
+            }
+            catch { }
+        }
+
         private static void ExitApp()
         {
+            if (mouseHook != null)
+            {
+                try { mouseHook.Dispose(); } catch { }
+            }
             if (trayIcon != null)
             {
                 trayIcon.Visible = false;
