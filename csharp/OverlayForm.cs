@@ -10,9 +10,6 @@ namespace QuizAssistant
     {
         private const int WS_EX_TOOLWINDOW = 0x00000080;
         private const int WS_EX_NOACTIVATE = 0x08000000;
-        private const int WM_NCHITTEST = 0x84;
-        private const int HTCLIENT = 1;
-        private const int HTCAPTION = 2;
 
         [DllImport("user32.dll")]
         public static extern bool ReleaseCapture();
@@ -21,7 +18,6 @@ namespace QuizAssistant
 
         private Label lblAnswer;
         private Label lblStatus;
-        private System.Windows.Forms.Timer autoHideTimer;
 
         protected override CreateParams CreateParams
         {
@@ -57,7 +53,7 @@ namespace QuizAssistant
 
             lblAnswer = new Label
             {
-                Text = "Hazır",
+                Text = "",
                 ForeColor = Color.FromArgb(244, 244, 245),
                 Font = new Font("Segoe UI", (float)config.FontSize, FontStyle.Bold),
                 AutoSize = true,
@@ -68,14 +64,6 @@ namespace QuizAssistant
 
             this.Controls.Add(lblStatus);
             this.Controls.Add(lblAnswer);
-
-            autoHideTimer = new System.Windows.Forms.Timer();
-            autoHideTimer.Interval = 2500;
-            autoHideTimer.Tick += (s, e) =>
-            {
-                autoHideTimer.Stop();
-                this.Hide();
-            };
 
             this.MouseDown += OnFormMouseDown;
             lblAnswer.MouseDown += OnFormMouseDown;
@@ -91,75 +79,42 @@ namespace QuizAssistant
             }
         }
 
-        public void SetLoading()
+        public void ShowAnswer(string answer, Point cursorPt)
         {
-            lblStatus.Text = "◌";
-            lblStatus.ForeColor = Color.FromArgb(234, 179, 8); // Yellow
-            lblAnswer.Text = "Oxunur...";
-            lblAnswer.ForeColor = Color.FromArgb(212, 212, 216);
-            AdjustSize();
-            this.Show();
-        }
-
-        public void SetAnswer(string answer, bool autoHide = true)
-        {
-            lblStatus.Text = "●";
-            lblStatus.ForeColor = Color.FromArgb(34, 197, 94); // Green
-            lblAnswer.Text = answer;
-            lblAnswer.ForeColor = Color.FromArgb(250, 250, 250);
-            AdjustSize();
-            this.Show();
-
-            if (autoHide)
-            {
-                autoHideTimer.Stop();
-                autoHideTimer.Interval = 3000;
-                autoHideTimer.Start();
-            }
-        }
-
-        public void ShowPeek(string answer)
-        {
-            autoHideTimer.Stop();
+            if (string.IsNullOrEmpty(answer)) answer = "Oxunmayıb";
             lblStatus.Text = "●";
             lblStatus.ForeColor = Color.FromArgb(34, 197, 94);
             lblAnswer.Text = answer;
             lblAnswer.ForeColor = Color.FromArgb(250, 250, 250);
             AdjustSize();
+
+            Rectangle screen = Screen.FromPoint(cursorPt).WorkingArea;
+            int x = cursorPt.X + 15;
+            int y = cursorPt.Y + 15;
+            if (x + this.Width > screen.Right) x = cursorPt.X - this.Width - 10;
+            if (y + this.Height > screen.Bottom) y = cursorPt.Y - this.Height - 10;
+            if (x < screen.Left) x = screen.Left + 10;
+            if (y < screen.Top) y = screen.Top + 10;
+
+            this.Location = new Point(x, y);
             this.Show();
         }
 
-        public void HidePeek()
+        public void HideAnswer()
         {
-            autoHideTimer.Stop();
             this.Hide();
-        }
-
-        public void SetError(string error)
-        {
-            lblStatus.Text = "✕";
-            lblStatus.ForeColor = Color.FromArgb(239, 68, 68); // Red
-            lblAnswer.Text = error;
-            lblAnswer.ForeColor = Color.FromArgb(254, 202, 202);
-            AdjustSize();
-            this.Show();
-
-            autoHideTimer.Stop();
-            autoHideTimer.Interval = 3500;
-            autoHideTimer.Start();
         }
 
         private void AdjustSize()
         {
-            int requiredWidth = Math.Max(160, Math.Min(520, lblAnswer.Location.X + lblAnswer.PreferredWidth + 16));
-            int requiredHeight = Math.Max(42, lblAnswer.Location.Y + lblAnswer.PreferredHeight + 14);
+            int requiredWidth = Math.Max(120, Math.Min(520, lblAnswer.Location.X + lblAnswer.PreferredWidth + 16));
+            int requiredHeight = Math.Max(38, lblAnswer.Location.Y + lblAnswer.PreferredHeight + 14);
             this.Size = new Size(requiredWidth, requiredHeight);
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
-            // Draw sleek rounded border
             using (Pen p = new Pen(Color.FromArgb(63, 63, 70), 1))
             {
                 e.Graphics.DrawRectangle(p, 0, 0, this.Width - 1, this.Height - 1);

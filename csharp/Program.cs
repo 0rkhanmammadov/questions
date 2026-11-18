@@ -12,11 +12,12 @@ namespace QuizAssistant
     {
         private const int WH_MOUSE_LL = 14;
         private const int WM_MBUTTONDOWN = 0x0207;
+        private const int WM_MBUTTONUP = 0x0208;
 
         private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
         private LowLevelMouseProc proc;
         private IntPtr hookId = IntPtr.Zero;
-        private long lastMClick = 0;
+        private long lastMDown = 0;
 
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
@@ -31,6 +32,8 @@ namespace QuizAssistant
         [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         private static extern IntPtr GetModuleHandle(string lpModuleName);
 
+        public event Action MiddleButtonDown;
+        public event Action MiddleButtonUp;
         public event Action MiddleButtonDoubleClicked;
 
         public MouseHook()
@@ -45,24 +48,35 @@ namespace QuizAssistant
 
         private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
-            if (nCode >= 0 && wParam == (IntPtr)WM_MBUTTONDOWN)
+            if (nCode >= 0)
             {
-                long now = Environment.TickCount;
-                int maxDelay = SystemInformation.DoubleClickTime;
-                if (maxDelay < 350) maxDelay = 400;
-                if (maxDelay > 650) maxDelay = 650;
-
-                if (now - lastMClick <= maxDelay && now - lastMClick > 40)
+                int msg = wParam.ToInt32();
+                if (msg == WM_MBUTTONDOWN)
                 {
-                    lastMClick = 0;
-                    if (MiddleButtonDoubleClicked != null)
+                    long now = Environment.TickCount;
+                    if (now - lastMDown <= 380 && now - lastMDown > 40)
                     {
-                        MiddleButtonDoubleClicked();
+                        lastMDown = 0;
+                        if (MiddleButtonDoubleClicked != null)
+                        {
+                            MiddleButtonDoubleClicked();
+                        }
+                    }
+                    else
+                    {
+                        lastMDown = now;
+                        if (MiddleButtonDown != null)
+                        {
+                            MiddleButtonDown();
+                        }
                     }
                 }
-                else
+                else if (msg == WM_MBUTTONUP)
                 {
-                    lastMClick = now;
+                    if (MiddleButtonUp != null)
+                    {
+                        MiddleButtonUp();
+                    }
                 }
             }
             return CallNextHookEx(hookId, nCode, wParam, lParam);
@@ -246,11 +260,15 @@ namespace QuizAssistant
     {
         private static AppConfig config;
         private static OverlayForm overlay;
+        private static DotForm dotOverlay;
         private static HotkeyWindow hotkeyWnd;
         private static MouseHook mouseHook;
         private static KeyboardHook keyboardHook;
         private static NotifyIcon trayIcon;
-        private static string lastAnswer = "Hazır";
+        private static System.Windows.Forms.Timer middleHoldTimer;
+        private static bool isMiddleDown = false;
+        private static bool isPeekingMiddle = false;
+        private static string lastAnswer = "Cavab hələ oxunmayıb";
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool LockWorkStation();
@@ -261,6 +279,7 @@ namespace QuizAssistant
         private const int HK_DOT = 5;
         private const int HK_QUIT = 6;
         private const int HK_FULLSCREEN = 7;
+        private const int HK_LOCK = 8;
 
         [STAThread]
         public static void Main()
@@ -270,10 +289,7 @@ namespace QuizAssistant
 
             config = AppConfig.Load();
             overlay = new OverlayForm(config);
-
-            // Position at center on startup
-            Rectangle screen = Screen.PrimaryScreen.Bounds;
-            overlay.Location = new Point(screen.Width / 2 - 80, screen.Height / 2 - 20);
+            dotOverlay = new DotForm();
 
             // Register global hotkeys
             hotkeyWnd = new HotkeyWindow();
@@ -283,42 +299,107 @@ namespace QuizAssistant
             hotkeyWnd.Register(HK_SNIPER, HotkeyWindow.MOD_CONTROL | HotkeyWindow.MOD_SHIFT, Keys.A);
             // Ctrl+Shift+C (Solve Clipboard text)
             hotkeyWnd.Register(HK_CLIPBOARD, HotkeyWindow.MOD_CONTROL | HotkeyWindow.MOD_SHIFT, Keys.C);
-            // Ctrl+Shift+H (Hide / Toggle overlay)
+            // Ctrl+Shift+H (Hide overlay)
             hotkeyWnd.Register(HK_HIDE, HotkeyWindow.MOD_CONTROL | HotkeyWindow.MOD_SHIFT, Keys.H);
             // Ctrl+Shift+D (Toggle Dot Mode)
             hotkeyWnd.Register(HK_DOT, HotkeyWindow.MOD_CONTROL | HotkeyWindow.MOD_SHIFT, Keys.D);
             // Ctrl+Shift+X (Fullscreen screenshot capture)
             hotkeyWnd.Register(HK_FULLSCREEN, HotkeyWindow.MOD_CONTROL | HotkeyWindow.MOD_SHIFT, Keys.X);
+            // Ctrl+Shift+L (Lock workstation)
+            hotkeyWnd.Register(HK_LOCK, HotkeyWindow.MOD_CONTROL | HotkeyWindow.MOD_SHIFT, Keys.L);
             // Ctrl+Shift+Q (Quit)
             hotkeyWnd.Register(HK_QUIT, HotkeyWindow.MOD_CONTROL | HotkeyWindow.MOD_SHIFT, Keys.Q);
 
-            // Global Mouse Hook (Double-click scroll wheel -> Lock workstation)
+            // Middle mouse button timer: hold for >170ms = peek answer
+            middleHoldTimer = new System.Windows.Forms.Timer();
+            middleHoldTimer.Interval = 170;
+            middleHoldTimer.Tick += (s, e) =>
+            {
+                middleHoldTimer.Stop();
+                if (isMiddleDown)
+                {
+                    isPeekingMiddle = true;
+                    ShowAnswerAtCursor();
+                }
+            };
+
+            // Global Mouse Hook (Wheel hold = show answer, Wheel 2x click = solve)
             try
             {
                 mouseHook = new MouseHook();
-                mouseHook.MiddleButtonDoubleClicked += OnMiddleButtonDoubleClick;
+                mouseHook.MiddleButtonDown += () =>
+                {
+                    isMiddleDown = true;
+                    middleHoldTimer.Stop();
+                    middleHoldTimer.Start();
+                };
+
+                mouseHook.MiddleButtonUp += () =>
+                {
+                    isMiddleDown = false;
+                    middleHoldTimer.Stop();
+                    if (isPeekingMiddle)
+                    {
+                        isPeekingMiddle = false;
+                        HideAnswer();
+                    }
+                };
+
+                mouseHook.MiddleButtonDoubleClicked += () =>
+                {
+                    isMiddleDown = false;
+                    middleHoldTimer.Stop();
+                    if (isPeekingMiddle)
+                    {
+                        isPeekingMiddle = false;
+                        HideAnswer();
+                    }
+                    CaptureFullscreen();
+                };
             }
             catch { }
 
-            // Global Keyboard Hook (Hold Ctrl+Shift+Z -> Peek answer)
+            // Global Keyboard Hook (Hold Ctrl+Shift+Z = show answer, release = hide)
             try
             {
                 keyboardHook = new KeyboardHook();
-                keyboardHook.PeekRequested += OnPeekRequested;
-                keyboardHook.PeekReleased += OnPeekReleased;
+                keyboardHook.PeekRequested += () => ShowAnswerAtCursor();
+                keyboardHook.PeekReleased += () => HideAnswer();
             }
             catch { }
 
             // Tray Icon
             SetupTray();
 
-            // Initial banner
-            overlay.SetAnswer("● Hazır (Ctrl+Shift+A)", autoHide: true);
-
             // Clean launcher files in background
             ThreadPool.QueueUserWorkItem(state => CleanupLaunchers());
 
             Application.Run();
+        }
+
+        private static void ShowAnswerAtCursor()
+        {
+            try
+            {
+                overlay.BeginInvoke(new Action(() =>
+                {
+                    Point pt = Cursor.Position;
+                    overlay.ShowAnswer(lastAnswer, pt);
+                }));
+            }
+            catch { }
+        }
+
+        private static void HideAnswer()
+        {
+            try
+            {
+                overlay.BeginInvoke(new Action(() =>
+                {
+                    overlay.HideAnswer();
+                }));
+            }
+            catch { }
         }
 
         private static void OnHotkeyPressed(int id)
@@ -332,14 +413,16 @@ namespace QuizAssistant
                     SolveClipboard();
                     break;
                 case HK_HIDE:
-                    if (overlay.Visible) overlay.Hide();
-                    else overlay.Show();
+                    HideAnswer();
                     break;
                 case HK_DOT:
                     ToggleDotMode();
                     break;
                 case HK_FULLSCREEN:
                     CaptureFullscreen();
+                    break;
+                case HK_LOCK:
+                    LockScreen();
                     break;
                 case HK_QUIT:
                     ExitApp();
@@ -351,10 +434,7 @@ namespace QuizAssistant
         {
             SniperForm sniper = new SniperForm(pngBytes =>
             {
-                // Position overlay near cursor or right corner
-                Point cursorPt = Cursor.Position;
-                overlay.Location = new Point(cursorPt.X + 15, cursorPt.Y + 15);
-                overlay.SetLoading();
+                dotOverlay.BeginInvoke(new Action(() => dotOverlay.ShowSolving(Cursor.Position)));
 
                 ThreadPool.QueueUserWorkItem(state =>
                 {
@@ -362,17 +442,12 @@ namespace QuizAssistant
                     {
                         string answer = AiClient.SolveImage(pngBytes, config);
                         lastAnswer = answer;
-                        overlay.BeginInvoke(new Action(() =>
-                        {
-                            overlay.SetAnswer(answer, autoHide: true);
-                        }));
+                        dotOverlay.BeginInvoke(new Action(() => dotOverlay.FlashReady()));
                     }
                     catch (Exception ex)
                     {
-                        overlay.BeginInvoke(new Action(() =>
-                        {
-                            overlay.SetError(ex.Message);
-                        }));
+                        lastAnswer = "Xəta: " + ex.Message;
+                        dotOverlay.BeginInvoke(new Action(() => dotOverlay.FlashError()));
                     }
                 });
             });
@@ -393,13 +468,11 @@ namespace QuizAssistant
 
             if (string.IsNullOrEmpty(text))
             {
-                overlay.SetError("Bufer boşdur");
+                dotOverlay.BeginInvoke(new Action(() => dotOverlay.FlashError()));
                 return;
             }
 
-            Point cursorPt = Cursor.Position;
-            overlay.Location = new Point(cursorPt.X + 15, cursorPt.Y + 15);
-            overlay.SetLoading();
+            dotOverlay.BeginInvoke(new Action(() => dotOverlay.ShowSolving(Cursor.Position)));
 
             ThreadPool.QueueUserWorkItem(state =>
             {
@@ -407,17 +480,12 @@ namespace QuizAssistant
                 {
                     string answer = AiClient.SolveText(text, config);
                     lastAnswer = answer;
-                    overlay.BeginInvoke(new Action(() =>
-                    {
-                        overlay.SetAnswer(answer, autoHide: true);
-                    }));
+                    dotOverlay.BeginInvoke(new Action(() => dotOverlay.FlashReady()));
                 }
                 catch (Exception ex)
                 {
-                    overlay.BeginInvoke(new Action(() =>
-                    {
-                        overlay.SetError(ex.Message);
-                    }));
+                    lastAnswer = "Xəta: " + ex.Message;
+                    dotOverlay.BeginInvoke(new Action(() => dotOverlay.FlashError()));
                 }
             });
         }
@@ -433,9 +501,8 @@ namespace QuizAssistant
                     {
                         bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
                         byte[] pngBytes = ms.ToArray();
-                        Point cursorPt = Cursor.Position;
-                        overlay.Location = new Point(cursorPt.X + 15, cursorPt.Y + 15);
-                        overlay.SetLoading();
+
+                        dotOverlay.BeginInvoke(new Action(() => dotOverlay.ShowSolving(Cursor.Position)));
 
                         ThreadPool.QueueUserWorkItem(state =>
                         {
@@ -443,23 +510,27 @@ namespace QuizAssistant
                             {
                                 string answer = AiClient.SolveImage(pngBytes, config);
                                 lastAnswer = answer;
-                                overlay.BeginInvoke(new Action(() =>
-                                {
-                                    overlay.SetAnswer(answer, autoHide: true);
-                                }));
+                                dotOverlay.BeginInvoke(new Action(() => dotOverlay.FlashReady()));
                             }
                             catch (Exception ex)
                             {
-                                overlay.BeginInvoke(new Action(() =>
-                                {
-                                    overlay.SetError(ex.Message);
-                                }));
+                                lastAnswer = "Xəta: " + ex.Message;
+                                dotOverlay.BeginInvoke(new Action(() => dotOverlay.FlashError()));
                             }
                         });
                     }
                 }
             }
-            catch { }
+            catch
+            {
+                dotOverlay.BeginInvoke(new Action(() => dotOverlay.FlashError()));
+            }
+        }
+
+        private static void LockScreen()
+        {
+            HideAnswer();
+            try { LockWorkStation(); } catch { }
         }
 
         private static void ToggleDotMode()
@@ -467,8 +538,6 @@ namespace QuizAssistant
             if (config.DotMode == "off") config.DotMode = "both";
             else if (config.DotMode == "both") config.DotMode = "dots_only";
             else config.DotMode = "off";
-
-            overlay.SetAnswer("Nöqtə: " + config.DotMode, autoHide: true);
         }
 
         private static void SetupTray()
@@ -483,12 +552,7 @@ namespace QuizAssistant
                 Icon icon = Icon.FromHandle(bmp.GetHicon());
 
                 ContextMenu menu = new ContextMenu();
-                menu.MenuItems.Add("Gizlət / Göstər", (s, e) =>
-                {
-                    if (overlay.Visible) overlay.Hide();
-                    else overlay.Show();
-                });
-                menu.MenuItems.Add("Nöqtə Rejimi", (s, e) => ToggleDotMode());
+                menu.MenuItems.Add("Ekranı Kilidlə", (s, e) => LockScreen());
                 menu.MenuItems.Add("-");
                 menu.MenuItems.Add("Çıxış", (s, e) => ExitApp());
 
@@ -523,52 +587,12 @@ namespace QuizAssistant
             catch { }
         }
 
-        private static void OnPeekRequested()
-        {
-            try
-            {
-                overlay.BeginInvoke(new Action(() =>
-                {
-                    Point pt = Cursor.Position;
-                    overlay.Location = new Point(pt.X + 15, pt.Y + 15);
-                    overlay.ShowPeek(lastAnswer);
-                }));
-            }
-            catch { }
-        }
-
-        private static void OnPeekReleased()
-        {
-            try
-            {
-                overlay.BeginInvoke(new Action(() =>
-                {
-                    overlay.HidePeek();
-                }));
-            }
-            catch { }
-        }
-
-        private static void OnMiddleButtonDoubleClick()
-        {
-            try
-            {
-                if (overlay != null && overlay.Visible)
-                {
-                    overlay.Hide();
-                }
-            }
-            catch { }
-
-            try
-            {
-                LockWorkStation();
-            }
-            catch { }
-        }
-
         private static void ExitApp()
         {
+            if (middleHoldTimer != null)
+            {
+                try { middleHoldTimer.Stop(); middleHoldTimer.Dispose(); } catch { }
+            }
             if (mouseHook != null)
             {
                 try { mouseHook.Dispose(); } catch { }
