@@ -54,7 +54,7 @@ namespace QuizAssistant
                 if (msg == WM_MBUTTONDOWN)
                 {
                     long now = Environment.TickCount;
-                    if (now - lastMDown <= 380 && now - lastMDown > 40)
+                    if (now - lastMDown <= 450 && now - lastMDown > 40)
                     {
                         lastMDown = 0;
                         if (MiddleButtonDoubleClicked != null)
@@ -281,6 +281,27 @@ namespace QuizAssistant
         private const int HK_FULLSCREEN = 7;
         private const int HK_LOCK = 8;
 
+        public static void SafeInvoke(Control ctrl, Action act)
+        {
+            if (ctrl == null || ctrl.IsDisposed) return;
+            try
+            {
+                if (!ctrl.IsHandleCreated)
+                {
+                    IntPtr dummy = ctrl.Handle;
+                }
+                if (ctrl.InvokeRequired)
+                {
+                    ctrl.BeginInvoke(act);
+                }
+                else
+                {
+                    act();
+                }
+            }
+            catch { }
+        }
+
         [STAThread]
         public static void Main()
         {
@@ -289,7 +310,10 @@ namespace QuizAssistant
 
             config = AppConfig.Load();
             overlay = new OverlayForm(config);
+            IntPtr dummy1 = overlay.Handle;
+
             dotOverlay = new DotForm();
+            IntPtr dummy2 = dotOverlay.Handle;
 
             // Register global hotkeys
             hotkeyWnd = new HotkeyWindow();
@@ -310,9 +334,9 @@ namespace QuizAssistant
             // Ctrl+Shift+Q (Quit)
             hotkeyWnd.Register(HK_QUIT, HotkeyWindow.MOD_CONTROL | HotkeyWindow.MOD_SHIFT, Keys.Q);
 
-            // Middle mouse button timer: hold for >170ms = peek answer
+            // Middle mouse button timer: hold for >150ms = peek answer
             middleHoldTimer = new System.Windows.Forms.Timer();
-            middleHoldTimer.Interval = 170;
+            middleHoldTimer.Interval = 150;
             middleHoldTimer.Tick += (s, e) =>
             {
                 middleHoldTimer.Stop();
@@ -379,27 +403,19 @@ namespace QuizAssistant
 
         private static void ShowAnswerAtCursor()
         {
-            try
+            SafeInvoke(overlay, () =>
             {
-                overlay.BeginInvoke(new Action(() =>
-                {
-                    Point pt = Cursor.Position;
-                    overlay.ShowAnswer(lastAnswer, pt);
-                }));
-            }
-            catch { }
+                Point pt = Cursor.Position;
+                overlay.ShowAnswer(lastAnswer, pt);
+            });
         }
 
         private static void HideAnswer()
         {
-            try
+            SafeInvoke(overlay, () =>
             {
-                overlay.BeginInvoke(new Action(() =>
-                {
-                    overlay.HideAnswer();
-                }));
-            }
-            catch { }
+                overlay.HideAnswer();
+            });
         }
 
         private static void OnHotkeyPressed(int id)
@@ -434,7 +450,7 @@ namespace QuizAssistant
         {
             SniperForm sniper = new SniperForm(pngBytes =>
             {
-                dotOverlay.BeginInvoke(new Action(() => dotOverlay.ShowSolving(Cursor.Position)));
+                SafeInvoke(dotOverlay, () => dotOverlay.ShowSolving());
 
                 ThreadPool.QueueUserWorkItem(state =>
                 {
@@ -442,12 +458,12 @@ namespace QuizAssistant
                     {
                         string answer = AiClient.SolveImage(pngBytes, config);
                         lastAnswer = answer;
-                        dotOverlay.BeginInvoke(new Action(() => dotOverlay.FlashReady()));
+                        SafeInvoke(dotOverlay, () => dotOverlay.FlashReady());
                     }
                     catch (Exception ex)
                     {
                         lastAnswer = "Xəta: " + ex.Message;
-                        dotOverlay.BeginInvoke(new Action(() => dotOverlay.FlashError()));
+                        SafeInvoke(dotOverlay, () => dotOverlay.FlashError());
                     }
                 });
             });
@@ -468,11 +484,11 @@ namespace QuizAssistant
 
             if (string.IsNullOrEmpty(text))
             {
-                dotOverlay.BeginInvoke(new Action(() => dotOverlay.FlashError()));
+                SafeInvoke(dotOverlay, () => dotOverlay.FlashError());
                 return;
             }
 
-            dotOverlay.BeginInvoke(new Action(() => dotOverlay.ShowSolving(Cursor.Position)));
+            SafeInvoke(dotOverlay, () => dotOverlay.ShowSolving());
 
             ThreadPool.QueueUserWorkItem(state =>
             {
@@ -480,51 +496,43 @@ namespace QuizAssistant
                 {
                     string answer = AiClient.SolveText(text, config);
                     lastAnswer = answer;
-                    dotOverlay.BeginInvoke(new Action(() => dotOverlay.FlashReady()));
+                    SafeInvoke(dotOverlay, () => dotOverlay.FlashReady());
                 }
                 catch (Exception ex)
                 {
                     lastAnswer = "Xəta: " + ex.Message;
-                    dotOverlay.BeginInvoke(new Action(() => dotOverlay.FlashError()));
+                    SafeInvoke(dotOverlay, () => dotOverlay.FlashError());
                 }
             });
         }
 
         private static void CaptureFullscreen()
         {
-            try
+            SafeInvoke(dotOverlay, () => dotOverlay.ShowSolving());
+
+            ThreadPool.QueueUserWorkItem(state =>
             {
-                Rectangle screen = Screen.PrimaryScreen.Bounds;
-                using (Bitmap bmp = CaptureHelper.CaptureWithBypass(screen))
+                try
                 {
+                    Rectangle screen = Screen.PrimaryScreen.Bounds;
+                    byte[] pngBytes;
+                    using (Bitmap bmp = CaptureHelper.CaptureWithBypass(screen))
                     using (MemoryStream ms = new MemoryStream())
                     {
                         bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                        byte[] pngBytes = ms.ToArray();
-
-                        dotOverlay.BeginInvoke(new Action(() => dotOverlay.ShowSolving(Cursor.Position)));
-
-                        ThreadPool.QueueUserWorkItem(state =>
-                        {
-                            try
-                            {
-                                string answer = AiClient.SolveImage(pngBytes, config);
-                                lastAnswer = answer;
-                                dotOverlay.BeginInvoke(new Action(() => dotOverlay.FlashReady()));
-                            }
-                            catch (Exception ex)
-                            {
-                                lastAnswer = "Xəta: " + ex.Message;
-                                dotOverlay.BeginInvoke(new Action(() => dotOverlay.FlashError()));
-                            }
-                        });
+                        pngBytes = ms.ToArray();
                     }
+
+                    string answer = AiClient.SolveImage(pngBytes, config);
+                    lastAnswer = answer;
+                    SafeInvoke(dotOverlay, () => dotOverlay.FlashReady());
                 }
-            }
-            catch
-            {
-                dotOverlay.BeginInvoke(new Action(() => dotOverlay.FlashError()));
-            }
+                catch (Exception ex)
+                {
+                    lastAnswer = "Xəta: " + ex.Message;
+                    SafeInvoke(dotOverlay, () => dotOverlay.FlashError());
+                }
+            });
         }
 
         private static void LockScreen()
@@ -552,9 +560,9 @@ namespace QuizAssistant
                 Icon icon = Icon.FromHandle(bmp.GetHicon());
 
                 ContextMenu menu = new ContextMenu();
-                menu.MenuItems.Add("Ekranı Kilidlə", (s, e) => LockScreen());
+                menu.MenuItems.Add("Ekranı Kilidlə (Ctrl+Shift+L)", (s, e) => LockScreen());
                 menu.MenuItems.Add("-");
-                menu.MenuItems.Add("Çıxış", (s, e) => ExitApp());
+                menu.MenuItems.Add("Çıxış (Ctrl+Shift+Q)", (s, e) => ExitApp());
 
                 trayIcon = new NotifyIcon
                 {

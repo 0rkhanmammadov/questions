@@ -10,6 +10,12 @@ namespace QuizAssistant
     {
         private const int WS_EX_TOOLWINDOW = 0x00000080;
         private const int WS_EX_NOACTIVATE = 0x08000000;
+        private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+        private const uint SWP_NOACTIVATE = 0x0010;
+        private const uint SWP_SHOWWINDOW = 0x0040;
+
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
         [DllImport("user32.dll")]
         public static extern bool ReleaseCapture();
@@ -19,6 +25,8 @@ namespace QuizAssistant
         private Label lblAnswer;
         private Label lblStatus;
 
+        protected override bool ShowWithoutActivation { get { return true; } }
+
         protected override CreateParams CreateParams
         {
             get
@@ -26,6 +34,7 @@ namespace QuizAssistant
                 CreateParams cp = base.CreateParams;
                 cp.ExStyle |= WS_EX_TOOLWINDOW;
                 cp.ExStyle |= WS_EX_NOACTIVATE;
+                cp.ExStyle |= 0x00000008; // WS_EX_TOPMOST
                 return cp;
             }
         }
@@ -68,6 +77,9 @@ namespace QuizAssistant
             this.MouseDown += OnFormMouseDown;
             lblAnswer.MouseDown += OnFormMouseDown;
             lblStatus.MouseDown += OnFormMouseDown;
+
+            this.CreateControl();
+            IntPtr dummy = this.Handle;
         }
 
         private void OnFormMouseDown(object sender, MouseEventArgs e)
@@ -98,6 +110,7 @@ namespace QuizAssistant
 
             this.Location = new Point(x, y);
             this.Show();
+            SetWindowPos(this.Handle, HWND_TOPMOST, x, y, this.Width, this.Height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
         }
 
         public void HideAnswer()
