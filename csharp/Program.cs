@@ -78,6 +78,121 @@ namespace QuizAssistant
         }
     }
 
+    public class KeyboardHook : IDisposable
+    {
+        private const int WH_KEYBOARD_LL = 13;
+        private const int WM_KEYDOWN = 0x0100;
+        private const int WM_KEYUP = 0x0101;
+        private const int WM_SYSKEYDOWN = 0x0104;
+        private const int WM_SYSKEYUP = 0x0105;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct KBDLLHOOKSTRUCT
+        {
+            public uint vkCode;
+            public uint scanCode;
+            public uint flags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
+        private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+        private LowLevelKeyboardProc proc;
+        private IntPtr hookId = IntPtr.Zero;
+        private bool isZHeld = false;
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr GetModuleHandle(string lpModuleName);
+
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+
+        public event Action PeekRequested;
+        public event Action PeekReleased;
+
+        public KeyboardHook()
+        {
+            proc = HookCallback;
+            using (Process curProcess = Process.GetCurrentProcess())
+            using (ProcessModule curModule = curProcess.MainModule)
+            {
+                hookId = SetWindowsHookEx(WH_KEYBOARD_LL, proc, GetModuleHandle(curModule.ModuleName), 0);
+            }
+        }
+
+        private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode >= 0)
+            {
+                int msg = wParam.ToInt32();
+                KBDLLHOOKSTRUCT kbd = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
+
+                if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
+                {
+                    if (kbd.vkCode == (uint)Keys.Z)
+                    {
+                        bool ctrl = (GetAsyncKeyState((int)Keys.ControlKey) & 0x8000) != 0;
+                        bool shift = (GetAsyncKeyState((int)Keys.ShiftKey) & 0x8000) != 0;
+                        if (ctrl && shift)
+                        {
+                            if (!isZHeld)
+                            {
+                                isZHeld = true;
+                                if (PeekRequested != null)
+                                {
+                                    PeekRequested();
+                                }
+                            }
+                            return (IntPtr)1;
+                        }
+                    }
+                }
+                else if (msg == WM_KEYUP || msg == WM_SYSKEYUP)
+                {
+                    if (isZHeld)
+                    {
+                        bool ctrl = (GetAsyncKeyState((int)Keys.ControlKey) & 0x8000) != 0;
+                        bool shift = (GetAsyncKeyState((int)Keys.ShiftKey) & 0x8000) != 0;
+                        bool zDown = (GetAsyncKeyState((int)Keys.Z) & 0x8000) != 0;
+
+                        if (!ctrl || !shift || !zDown)
+                        {
+                            isZHeld = false;
+                            if (PeekReleased != null)
+                            {
+                                PeekReleased();
+                            }
+                            if (kbd.vkCode == (uint)Keys.Z)
+                            {
+                                return (IntPtr)1;
+                            }
+                        }
+                    }
+                }
+            }
+            return CallNextHookEx(hookId, nCode, wParam, lParam);
+        }
+
+        public void Dispose()
+        {
+            if (hookId != IntPtr.Zero)
+            {
+                UnhookWindowsHookEx(hookId);
+                hookId = IntPtr.Zero;
+            }
+        }
+    }
+
     public class HotkeyWindow : NativeWindow, IDisposable
     {
         private const int WM_HOTKEY = 0x0312;
@@ -133,13 +248,14 @@ namespace QuizAssistant
         private static OverlayForm overlay;
         private static HotkeyWindow hotkeyWnd;
         private static MouseHook mouseHook;
+        private static KeyboardHook keyboardHook;
         private static NotifyIcon trayIcon;
+        private static string lastAnswer = "Hazır";
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool LockWorkStation();
 
         private const int HK_SNIPER = 1;
-        private const int HK_SNIPER_ALT = 2;
         private const int HK_CLIPBOARD = 3;
         private const int HK_HIDE = 4;
         private const int HK_DOT = 5;
@@ -165,8 +281,6 @@ namespace QuizAssistant
 
             // Ctrl+Shift+A (Sniper region capture)
             hotkeyWnd.Register(HK_SNIPER, HotkeyWindow.MOD_CONTROL | HotkeyWindow.MOD_SHIFT, Keys.A);
-            // Ctrl+Shift+Z (Alternative region capture)
-            hotkeyWnd.Register(HK_SNIPER_ALT, HotkeyWindow.MOD_CONTROL | HotkeyWindow.MOD_SHIFT, Keys.Z);
             // Ctrl+Shift+C (Solve Clipboard text)
             hotkeyWnd.Register(HK_CLIPBOARD, HotkeyWindow.MOD_CONTROL | HotkeyWindow.MOD_SHIFT, Keys.C);
             // Ctrl+Shift+H (Hide / Toggle overlay)
@@ -183,6 +297,15 @@ namespace QuizAssistant
             {
                 mouseHook = new MouseHook();
                 mouseHook.MiddleButtonDoubleClicked += OnMiddleButtonDoubleClick;
+            }
+            catch { }
+
+            // Global Keyboard Hook (Hold Ctrl+Shift+Z -> Peek answer)
+            try
+            {
+                keyboardHook = new KeyboardHook();
+                keyboardHook.PeekRequested += OnPeekRequested;
+                keyboardHook.PeekReleased += OnPeekReleased;
             }
             catch { }
 
@@ -203,7 +326,6 @@ namespace QuizAssistant
             switch (id)
             {
                 case HK_SNIPER:
-                case HK_SNIPER_ALT:
                     StartSniper();
                     break;
                 case HK_CLIPBOARD:
@@ -239,9 +361,10 @@ namespace QuizAssistant
                     try
                     {
                         string answer = AiClient.SolveImage(pngBytes, config);
+                        lastAnswer = answer;
                         overlay.BeginInvoke(new Action(() =>
                         {
-                            overlay.SetAnswer(answer, autoHide: false);
+                            overlay.SetAnswer(answer, autoHide: true);
                         }));
                     }
                     catch (Exception ex)
@@ -283,9 +406,10 @@ namespace QuizAssistant
                 try
                 {
                     string answer = AiClient.SolveText(text, config);
+                    lastAnswer = answer;
                     overlay.BeginInvoke(new Action(() =>
                     {
-                        overlay.SetAnswer(answer, autoHide: false);
+                        overlay.SetAnswer(answer, autoHide: true);
                     }));
                 }
                 catch (Exception ex)
@@ -318,9 +442,10 @@ namespace QuizAssistant
                             try
                             {
                                 string answer = AiClient.SolveImage(pngBytes, config);
+                                lastAnswer = answer;
                                 overlay.BeginInvoke(new Action(() =>
                                 {
-                                    overlay.SetAnswer(answer, autoHide: false);
+                                    overlay.SetAnswer(answer, autoHide: true);
                                 }));
                             }
                             catch (Exception ex)
@@ -398,6 +523,32 @@ namespace QuizAssistant
             catch { }
         }
 
+        private static void OnPeekRequested()
+        {
+            try
+            {
+                overlay.BeginInvoke(new Action(() =>
+                {
+                    Point pt = Cursor.Position;
+                    overlay.Location = new Point(pt.X + 15, pt.Y + 15);
+                    overlay.ShowPeek(lastAnswer);
+                }));
+            }
+            catch { }
+        }
+
+        private static void OnPeekReleased()
+        {
+            try
+            {
+                overlay.BeginInvoke(new Action(() =>
+                {
+                    overlay.HidePeek();
+                }));
+            }
+            catch { }
+        }
+
         private static void OnMiddleButtonDoubleClick()
         {
             try
@@ -421,6 +572,10 @@ namespace QuizAssistant
             if (mouseHook != null)
             {
                 try { mouseHook.Dispose(); } catch { }
+            }
+            if (keyboardHook != null)
+            {
+                try { keyboardHook.Dispose(); } catch { }
             }
             if (trayIcon != null)
             {

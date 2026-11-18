@@ -101,7 +101,7 @@ namespace QuizAssistant
             this.Show();
         }
 
-        public void SetAnswer(string answer, bool autoHide = false)
+        public void SetAnswer(string answer, bool autoHide = true)
         {
             lblStatus.Text = "●";
             lblStatus.ForeColor = Color.FromArgb(34, 197, 94); // Green
@@ -113,8 +113,26 @@ namespace QuizAssistant
             if (autoHide)
             {
                 autoHideTimer.Stop();
+                autoHideTimer.Interval = 3000;
                 autoHideTimer.Start();
             }
+        }
+
+        public void ShowPeek(string answer)
+        {
+            autoHideTimer.Stop();
+            lblStatus.Text = "●";
+            lblStatus.ForeColor = Color.FromArgb(34, 197, 94);
+            lblAnswer.Text = answer;
+            lblAnswer.ForeColor = Color.FromArgb(250, 250, 250);
+            AdjustSize();
+            this.Show();
+        }
+
+        public void HidePeek()
+        {
+            autoHideTimer.Stop();
+            this.Hide();
         }
 
         public void SetError(string error)
