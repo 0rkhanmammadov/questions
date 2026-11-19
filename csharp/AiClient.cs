@@ -170,21 +170,11 @@ namespace QuizAssistant
                     }
                 },
                 {
-                    "generationConfig", new Dictionary<string, object>
-                    {
-                        { "temperature", 0.0 },
-                        { "maxOutputTokens", 1000 }
-                    }
-                },
-                {
                     "safetySettings", GetSafetySettings()
                 }
             };
 
-            JavaScriptSerializer ser = CreateSerializer();
-            string jsonBody = ser.Serialize(payloadObj);
-
-            string responseJson = CallGeminiWithFallback(host, config.GeminiModel, apiKey, jsonBody);
+            string responseJson = CallGeminiWithFallback(host, config.GeminiModel, apiKey, payloadObj);
             string rawAnswer = ExtractGeminiAnswer(responseJson);
             string cleanedAnswer = CleanAnswer(rawAnswer);
             return FormatWithDots(cleanedAnswer, config.DotMode);
@@ -259,21 +249,11 @@ namespace QuizAssistant
                     }
                 },
                 {
-                    "generationConfig", new Dictionary<string, object>
-                    {
-                        { "temperature", 0.0 },
-                        { "maxOutputTokens", 1000 }
-                    }
-                },
-                {
                     "safetySettings", GetSafetySettings()
                 }
             };
 
-            JavaScriptSerializer ser = CreateSerializer();
-            string jsonBody = ser.Serialize(payloadObj);
-
-            string responseJson = CallGeminiWithFallback(host, config.GeminiModel, apiKey, jsonBody);
+            string responseJson = CallGeminiWithFallback(host, config.GeminiModel, apiKey, payloadObj);
             string rawAnswer = ExtractGeminiAnswer(responseJson);
             string cleanedAnswer = CleanAnswer(rawAnswer);
             return FormatWithDots(cleanedAnswer, config.DotMode);
@@ -331,31 +311,43 @@ namespace QuizAssistant
                     }
                 },
                 {
-                    "generationConfig", new Dictionary<string, object>
-                    {
-                        { "temperature", 0.0 },
-                        { "maxOutputTokens", 1000 }
-                    }
-                },
-                {
                     "safetySettings", GetSafetySettings()
                 }
             };
 
-            JavaScriptSerializer ser = CreateSerializer();
-            string jsonBody = ser.Serialize(payloadObj);
-
-            string responseJson = CallGeminiWithFallback(host, config.GeminiModel, apiKey, jsonBody);
+            string responseJson = CallGeminiWithFallback(host, config.GeminiModel, apiKey, payloadObj);
             string rawAnswer = ExtractGeminiAnswer(responseJson);
             string cleanedAnswer = CleanAnswer(rawAnswer);
             return FormatWithDots(cleanedAnswer, config.DotMode);
         }
 
-        private static string CallGeminiWithFallback(string host, string primaryModel, string apiKey, string jsonBody)
+        private static Dictionary<string, object> BuildGenerationConfig(string model)
+        {
+            var genConfig = new Dictionary<string, object>
+            {
+                { "temperature", 0.0 },
+                { "maxOutputTokens", 2048 }
+            };
+
+            if (!string.IsNullOrEmpty(model) && (model.IndexOf("hydrogen", StringComparison.OrdinalIgnoreCase) >= 0 || model.IndexOf("thinking", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                genConfig["thinkingConfig"] = new Dictionary<string, object>
+                {
+                    { "thinkingBudget", 0 }
+                };
+            }
+
+            return genConfig;
+        }
+
+        private static string CallGeminiWithFallback(string host, string primaryModel, string apiKey, Dictionary<string, object> payloadObj)
         {
             string chosen = string.IsNullOrEmpty(primaryModel) ? FallbackModel : primaryModel.Trim();
             string ip = DohResolver.Resolve(host);
             string primaryUrl = string.Format("https://{0}/v1beta/models/{1}:generateContent?key={2}", ip, chosen, apiKey);
+
+            payloadObj["generationConfig"] = BuildGenerationConfig(chosen);
+            string jsonBody = CreateSerializer().Serialize(payloadObj);
 
             try
             {
@@ -365,8 +357,10 @@ namespace QuizAssistant
             {
                 if (!string.Equals(chosen, FallbackModel, StringComparison.OrdinalIgnoreCase))
                 {
+                    payloadObj["generationConfig"] = BuildGenerationConfig(FallbackModel);
+                    string fallbackJson = CreateSerializer().Serialize(payloadObj);
                     string fallbackUrl = string.Format("https://{0}/v1beta/models/{1}:generateContent?key={2}", ip, FallbackModel, apiKey);
-                    return PostJson(fallbackUrl, host, apiKey, jsonBody);
+                    return PostJson(fallbackUrl, host, apiKey, fallbackJson);
                 }
                 throw;
             }
