@@ -28,7 +28,7 @@ namespace QuizAssistant
         {
             Provider = "gemini";
             GeminiApiKey = BuiltinKey;
-            GeminiModel = "gemini-3.5-flash-lite";
+            GeminiModel = "gemini-4-hydrogen";
             Opacity = 0.82;
             FontSize = 10;
             PositionMode = "cursor";
