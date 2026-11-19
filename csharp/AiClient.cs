@@ -402,7 +402,7 @@ namespace QuizAssistant
                 {
                     payloadObj["generationConfig"] = BuildGenerationConfig(FallbackModel);
                     string fallbackJson = CreateSerializer().Serialize(payloadObj);
-                    string fallbackUrl = string.Format("https://{0}/v1beta/models/{1}:generateContent?key={2}", ip, FallbackModel, apiKey);
+                    string fallbackUrl = string.Format("https://{0}/v1beta/models/{1}:generateContent?key={2}", host, FallbackModel, apiKey);
                     return PostJson(fallbackUrl, host, apiKey, fallbackJson);
                 }
                 throw;
@@ -416,8 +416,8 @@ namespace QuizAssistant
             req.ContentType = "application/json; charset=utf-8";
             req.Host = host;
             req.Headers["x-goog-api-key"] = apiKey;
-            req.Timeout = 15000;
-            req.ReadWriteTimeout = 15000;
+            req.Timeout = 25000;
+            req.ReadWriteTimeout = 25000;
 
             byte[] bytes = Encoding.UTF8.GetBytes(jsonBody);
             req.ContentLength = bytes.Length;

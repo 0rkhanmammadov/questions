@@ -70,7 +70,7 @@ namespace QuizAssistant
                 ForeColor = Color.FromArgb(244, 244, 245),
                 Font = new Font("Segoe UI", (float)config.FontSize, FontStyle.Bold),
                 AutoSize = true,
-                MaximumSize = new Size(460, 0),
+                MaximumSize = new Size(480, 0),
                 Location = new Point(26, 11),
                 BackColor = Color.Transparent
             };
@@ -109,13 +109,14 @@ namespace QuizAssistant
             lblStatus.ForeColor = Color.FromArgb(34, 197, 94);
             lblAnswer.Text = answer;
             lblAnswer.ForeColor = Color.FromArgb(250, 250, 250);
-            AdjustSize();
 
             Rectangle screen = Screen.FromPoint(cursorPt).WorkingArea;
+            AdjustSize(screen);
+
             int x = cursorPt.X + 15;
             int y = cursorPt.Y + 15;
-            if (x + this.Width > screen.Right) x = cursorPt.X - this.Width - 10;
-            if (y + this.Height > screen.Bottom) y = cursorPt.Y - this.Height - 10;
+            if (x + this.Width > screen.Right) x = cursorPt.X - this.Width - 15;
+            if (y + this.Height > screen.Bottom) y = cursorPt.Y - this.Height - 15;
             if (x < screen.Left) x = screen.Left + 10;
             if (y < screen.Top) y = screen.Top + 10;
 
@@ -130,10 +131,13 @@ namespace QuizAssistant
             this.Hide();
         }
 
-        private void AdjustSize()
+        private void AdjustSize(Rectangle screenArea)
         {
-            int requiredWidth = Math.Max(120, Math.Min(520, lblAnswer.Location.X + lblAnswer.PreferredWidth + 16));
-            int requiredHeight = Math.Max(38, lblAnswer.Location.Y + lblAnswer.PreferredHeight + 14);
+            int maxH = Math.Max(200, screenArea.Height - 40);
+            int maxW = Math.Min(520, screenArea.Width - 40);
+
+            int requiredWidth = Math.Max(120, Math.Min(maxW, lblAnswer.Location.X + lblAnswer.PreferredWidth + 16));
+            int requiredHeight = Math.Max(38, Math.Min(maxH, lblAnswer.Location.Y + lblAnswer.PreferredHeight + 14));
             this.Size = new Size(requiredWidth, requiredHeight);
         }
 
