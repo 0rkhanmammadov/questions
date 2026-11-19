@@ -17,6 +17,10 @@ namespace QuizAssistant
         [DllImport("user32.dll")]
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+        private const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+
         [DllImport("user32.dll")]
         public static extern bool ReleaseCapture();
         [DllImport("user32.dll")]
@@ -80,6 +84,7 @@ namespace QuizAssistant
 
             this.CreateControl();
             IntPtr dummy = this.Handle;
+            try { SetWindowDisplayAffinity(this.Handle, WDA_EXCLUDEFROMCAPTURE); } catch { }
         }
 
         private void OnFormMouseDown(object sender, MouseEventArgs e)
