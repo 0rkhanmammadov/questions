@@ -1,25 +1,134 @@
 using System;
 using System.Drawing;
-using System.Drawing.Drawing2D;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace QuizAssistant
 {
-    public class DotForm : Form
+    public static class CursorManager
     {
-        private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
-        private const uint SWP_NOACTIVATE = 0x0010;
-        private const uint SWP_SHOWWINDOW = 0x0040;
-        private const uint SWP_NOSIZE = 0x0001;
+        private const uint OCR_NORMAL = 32512;
+        private const uint OCR_IBEAM = 32513;
+        private const uint OCR_HAND = 32649;
+
+        private const uint SPI_SETCURSORS = 0x0057;
+        private const uint IMAGE_CURSOR = 2;
+        private const uint LR_LOADFROMFILE = 0x0010;
+
+        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern IntPtr LoadImage(IntPtr hinst, string lpszName, uint uType, int cxDesired, int cyDesired, uint fuLoad);
 
         [DllImport("user32.dll")]
-        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+        private static extern bool SetSystemCursor(IntPtr hcur, uint id);
 
-        private System.Windows.Forms.Timer followTimer;
-        private System.Windows.Forms.Timer animTimer;
-        private int animFrame = 0;
+        [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW")]
+        private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, IntPtr pvParam, uint fWinIni);
 
+        [DllImport("user32.dll")]
+        private static extern IntPtr CopyIcon(IntPtr hIcon);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr LoadCursor(IntPtr hInstance, int lpCursorName);
+
+        private static readonly object syncLock = new object();
+        private static bool isHourglassActive = false;
+        private static System.Windows.Forms.Timer safetyTimer;
+
+        static CursorManager()
+        {
+            try
+            {
+                safetyTimer = new System.Windows.Forms.Timer();
+                safetyTimer.Interval = 12000;
+                safetyTimer.Tick += (s, e) =>
+                {
+                    safetyTimer.Stop();
+                    RestoreCursor();
+                };
+
+                AppDomain.CurrentDomain.ProcessExit += (s, e) => RestoreCursor();
+                Application.ApplicationExit += (s, e) => RestoreCursor();
+            }
+            catch { }
+        }
+
+        private static IntPtr LoadOriginalHourglass()
+        {
+            string[] paths = new string[]
+            {
+                @"C:\Windows\Cursors\lwait.cur",
+                @"C:\Windows\Cursors\wait_m.cur",
+                @"C:\Windows\Cursors\wait_i.cur",
+                @"C:\Windows\Cursors\busy_i.cur",
+                @"C:\Windows\Cursors\aero_busy.ani"
+            };
+
+            foreach (string p in paths)
+            {
+                if (File.Exists(p))
+                {
+                    IntPtr h = LoadImage(IntPtr.Zero, p, IMAGE_CURSOR, 32, 32, LR_LOADFROMFILE);
+                    if (h != IntPtr.Zero) return h;
+                }
+            }
+
+            IntPtr defWait = LoadCursor(IntPtr.Zero, 32514); // IDC_WAIT
+            if (defWait != IntPtr.Zero)
+            {
+                return CopyIcon(defWait);
+            }
+            return IntPtr.Zero;
+        }
+
+        public static void ShowHourglass()
+        {
+            lock (syncLock)
+            {
+                try
+                {
+                    IntPtr h1 = LoadOriginalHourglass();
+                    if (h1 != IntPtr.Zero)
+                    {
+                        IntPtr h2 = CopyIcon(h1);
+                        IntPtr h3 = CopyIcon(h1);
+
+                        SetSystemCursor(h1, OCR_NORMAL);
+                        if (h2 != IntPtr.Zero) SetSystemCursor(h2, OCR_IBEAM);
+                        if (h3 != IntPtr.Zero) SetSystemCursor(h3, OCR_HAND);
+
+                        isHourglassActive = true;
+                        if (safetyTimer != null)
+                        {
+                            safetyTimer.Stop();
+                            safetyTimer.Start();
+                        }
+                    }
+                }
+                catch { }
+            }
+        }
+
+        public static void RestoreCursor()
+        {
+            lock (syncLock)
+            {
+                try
+                {
+                    if (safetyTimer != null) safetyTimer.Stop();
+                    if (isHourglassActive)
+                    {
+                        SystemParametersInfo(SPI_SETCURSORS, 0, IntPtr.Zero, 0);
+                        isHourglassActive = false;
+                    }
+                }
+                catch { }
+            }
+        }
+    }
+
+    public class DotForm : Form
+    {
         protected override bool ShowWithoutActivation { get { return true; } }
 
         protected override CreateParams CreateParams
@@ -29,7 +138,7 @@ namespace QuizAssistant
                 CreateParams cp = base.CreateParams;
                 cp.ExStyle |= 0x00000080; // WS_EX_TOOLWINDOW
                 cp.ExStyle |= 0x08000000; // WS_EX_NOACTIVATE
-                cp.ExStyle |= 0x00000020; // WS_EX_TRANSPARENT (clicks pass through)
+                cp.ExStyle |= 0x00000020; // WS_EX_TRANSPARENT
                 cp.ExStyle |= 0x00000008; // WS_EX_TOPMOST
                 return cp;
             }
@@ -43,143 +152,26 @@ namespace QuizAssistant
             this.StartPosition = FormStartPosition.Manual;
             this.BackColor = Color.Magenta;
             this.TransparencyKey = Color.Magenta;
-            this.Size = new Size(24, 28);
-            this.DoubleBuffered = true;
-
-            followTimer = new System.Windows.Forms.Timer();
-            followTimer.Interval = 25;
-            followTimer.Tick += (s, e) => PositionAtCursor();
-
-            animTimer = new System.Windows.Forms.Timer();
-            animTimer.Interval = 100;
-            animTimer.Tick += (s, e) =>
-            {
-                animFrame = (animFrame + 1) % 4;
-                this.Invalidate();
-            };
+            this.Size = new Size(1, 1);
+            this.Opacity = 0;
 
             this.CreateControl();
             IntPtr dummy = this.Handle;
         }
 
-        private void PositionAtCursor()
-        {
-            Point cur = Cursor.Position;
-            int x = cur.X + 12;
-            int y = cur.Y + 12;
-            if (this.Visible)
-            {
-                SetWindowPos(this.Handle, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-            }
-            else
-            {
-                this.Location = new Point(x, y);
-            }
-        }
-
         public void ShowSolving()
         {
-            PositionAtCursor();
-            this.Show();
-            SetWindowPos(this.Handle, HWND_TOPMOST, Cursor.Position.X + 12, Cursor.Position.Y + 12, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-            this.Invalidate();
-            followTimer.Start();
-            animTimer.Start();
+            CursorManager.ShowHourglass();
         }
 
         public void FlashReady()
         {
-            followTimer.Stop();
-            animTimer.Stop();
-            this.Hide();
+            CursorManager.RestoreCursor();
         }
 
         public void FlashError()
         {
-            followTimer.Stop();
-            animTimer.Stop();
-            this.Hide();
-        }
-
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            Graphics g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-
-            // Caps (top & bottom rims)
-            using (Brush rimBrush = new SolidBrush(Color.FromArgb(45, 52, 60)))
-            {
-                g.FillRectangle(rimBrush, 4, 2, 16, 3);
-                g.FillRectangle(rimBrush, 4, 21, 16, 3);
-            }
-            using (Pen rimEdge = new Pen(Color.FromArgb(20, 24, 30), 1f))
-            {
-                g.DrawRectangle(rimEdge, 4, 2, 16, 3);
-                g.DrawRectangle(rimEdge, 4, 21, 16, 3);
-            }
-
-            // Glass shape
-            using (GraphicsPath glassPath = new GraphicsPath())
-            {
-                glassPath.AddLine(5, 5, 19, 5);
-                glassPath.AddLine(19, 5, 14, 13);
-                glassPath.AddLine(14, 13, 19, 21);
-                glassPath.AddLine(19, 21, 5, 21);
-                glassPath.AddLine(5, 21, 10, 13);
-                glassPath.AddLine(10, 13, 5, 5);
-                glassPath.CloseFigure();
-
-                // Subtle transparent glass backing
-                using (Brush glassBg = new SolidBrush(Color.FromArgb(30, 240, 245, 255)))
-                {
-                    g.FillPath(glassBg, glassPath);
-                }
-
-                // Top Sand
-                Point[] topSand = new Point[]
-                {
-                    new Point(6, 6),
-                    new Point(18, 6),
-                    new Point(14, 11),
-                    new Point(10, 11)
-                };
-                using (Brush sandBrush = new SolidBrush(Color.FromArgb(245, 158, 11)))
-                using (Brush sandShadow = new SolidBrush(Color.FromArgb(217, 119, 6)))
-                {
-                    g.FillPolygon(sandBrush, topSand);
-
-                    // Bottom Sand mound
-                    Point[] botSand = new Point[]
-                    {
-                        new Point(12, 16),
-                        new Point(17, 21),
-                        new Point(7, 21)
-                    };
-                    g.FillPolygon(sandShadow, botSand);
-
-                    // Falling sand stream (animated bead)
-                    int dropY = 11 + (animFrame * 2);
-                    using (Pen tricklePen = new Pen(Color.FromArgb(245, 158, 11), 1f))
-                    {
-                        g.DrawLine(tricklePen, 12, 11, 12, 16);
-                        g.FillRectangle(sandBrush, 11, dropY, 2, 2);
-                    }
-                }
-
-                // Glass outline
-                using (Pen glassPen = new Pen(Color.FromArgb(148, 163, 184), 1.2f))
-                {
-                    g.DrawPath(glassPen, glassPath);
-                }
-
-                // Glass gleam highlight
-                using (Pen gleamPen = new Pen(Color.FromArgb(170, 255, 255, 255), 1.0f))
-                {
-                    g.DrawLine(gleamPen, 7, 7, 10, 11);
-                    g.DrawLine(gleamPen, 7, 19, 10, 15);
-                }
-            }
+            CursorManager.RestoreCursor();
         }
     }
 }

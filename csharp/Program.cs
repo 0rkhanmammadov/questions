@@ -597,6 +597,7 @@ namespace QuizAssistant
 
         private static void ExitApp()
         {
+            CursorManager.RestoreCursor();
             if (middleHoldTimer != null)
             {
                 try { middleHoldTimer.Stop(); middleHoldTimer.Dispose(); } catch { }
