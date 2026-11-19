@@ -546,28 +546,26 @@ namespace QuizAssistant
                 try
                 {
                     Rectangle screen = Screen.PrimaryScreen.Bounds;
-                    byte[] pngBytes;
+                    byte[] imageBytes;
                     using (Bitmap bmp = CaptureHelper.CaptureWithBypass(screen))
-                    using (MemoryStream ms = new MemoryStream())
                     {
-                        bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                        pngBytes = ms.ToArray();
+                        imageBytes = CaptureHelper.EncodeToJpeg(bmp, 85L);
                     }
 
                     byte[] wavBytes = null;
                     if (AudioCapture.HasRecentAudio(30))
                     {
-                        wavBytes = AudioCapture.GetLastAudioWavBytes(90);
+                        wavBytes = AudioCapture.GetLastAudioWavBytes(60);
                     }
 
                     string answer;
                     if (wavBytes != null && wavBytes.Length > 0)
                     {
-                        answer = AiClient.SolveImageAndAudio(pngBytes, wavBytes, config);
+                        answer = AiClient.SolveImageAndAudio(imageBytes, wavBytes, config);
                     }
                     else
                     {
-                        answer = AiClient.SolveImage(pngBytes, config);
+                        answer = AiClient.SolveImage(imageBytes, config);
                     }
 
                     lastAnswer = answer;

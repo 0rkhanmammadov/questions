@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -147,6 +148,35 @@ namespace QuizAssistant
             }
 
             return bmp;
+        }
+
+        public static byte[] EncodeToJpeg(Bitmap bmp, long quality = 85L)
+        {
+            if (bmp == null) return null;
+            using (MemoryStream ms = new MemoryStream())
+            {
+                ImageCodecInfo jpgEncoder = null;
+                foreach (ImageCodecInfo codec in ImageCodecInfo.GetImageEncoders())
+                {
+                    if (codec.FormatID == ImageFormat.Jpeg.Guid)
+                    {
+                        jpgEncoder = codec;
+                        break;
+                    }
+                }
+
+                if (jpgEncoder != null)
+                {
+                    EncoderParameters encParams = new EncoderParameters(1);
+                    encParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, quality);
+                    bmp.Save(ms, jpgEncoder, encParams);
+                }
+                else
+                {
+                    bmp.Save(ms, ImageFormat.Jpeg);
+                }
+                return ms.ToArray();
+            }
         }
     }
 }

@@ -39,6 +39,13 @@ namespace QuizAssistant
 
         private const string FallbackModel = "gemini-3.5-flash-lite";
 
+        private static JavaScriptSerializer CreateSerializer()
+        {
+            JavaScriptSerializer ser = new JavaScriptSerializer();
+            ser.MaxJsonLength = int.MaxValue;
+            return ser;
+        }
+
         public static string FormatWithDots(string ans, string dotMode)
         {
             if (string.IsNullOrEmpty(ans)) return "";
@@ -160,7 +167,7 @@ namespace QuizAssistant
                 }
             };
 
-            JavaScriptSerializer ser = new JavaScriptSerializer();
+            JavaScriptSerializer ser = CreateSerializer();
             string jsonBody = ser.Serialize(payloadObj);
 
             string responseJson = CallGeminiWithFallback(host, config.GeminiModel, apiKey, jsonBody);
@@ -182,6 +189,7 @@ namespace QuizAssistant
             string host = "generativelanguage.googleapis.com";
             string b64Img = (imageBytes != null && imageBytes.Length > 0) ? Convert.ToBase64String(imageBytes) : null;
             string b64Wav = Convert.ToBase64String(audioWavBytes);
+            string imgMime = (imageBytes != null && imageBytes.Length > 2 && imageBytes[0] == 0xFF && imageBytes[1] == 0xD8) ? "image/jpeg" : "image/png";
 
             string userInstruction =
                 "Sən beynəlxalq imtahan ekspertisən. Qulaqlıqdan gələn audionu dinlə və ekrandakı sualları oxu.\n" +
@@ -201,7 +209,7 @@ namespace QuizAssistant
                     {
                         "inline_data", new Dictionary<string, object>
                         {
-                            { "mime_type", "image/png" },
+                            { "mime_type", imgMime },
                             { "data", b64Img }
                         }
                     }
@@ -245,7 +253,7 @@ namespace QuizAssistant
                 }
             };
 
-            JavaScriptSerializer ser = new JavaScriptSerializer();
+            JavaScriptSerializer ser = CreateSerializer();
             string jsonBody = ser.Serialize(payloadObj);
 
             string responseJson = CallGeminiWithFallback(host, config.GeminiModel, apiKey, jsonBody);
@@ -263,6 +271,7 @@ namespace QuizAssistant
 
             string host = "generativelanguage.googleapis.com";
             string b64Img = Convert.ToBase64String(imageBytes);
+            string imgMime = (imageBytes != null && imageBytes.Length > 2 && imageBytes[0] == 0xFF && imageBytes[1] == 0xD8) ? "image/jpeg" : "image/png";
 
             string userInstruction =
                 "Sən imtahan ekspertisən. Şəkildəki sualı və variantları diqqətlə oxu, ən doğru cavabı tap.\n" +
@@ -294,7 +303,7 @@ namespace QuizAssistant
                                         {
                                             "inline_data", new Dictionary<string, object>
                                             {
-                                                { "mime_type", "image/png" },
+                                                { "mime_type", imgMime },
                                                 { "data", b64Img }
                                             }
                                         }
@@ -313,7 +322,7 @@ namespace QuizAssistant
                 }
             };
 
-            JavaScriptSerializer ser = new JavaScriptSerializer();
+            JavaScriptSerializer ser = CreateSerializer();
             string jsonBody = ser.Serialize(payloadObj);
 
             string responseJson = CallGeminiWithFallback(host, config.GeminiModel, apiKey, jsonBody);
@@ -385,7 +394,7 @@ namespace QuizAssistant
 
         private static string ExtractGeminiAnswer(string json)
         {
-            JavaScriptSerializer ser = new JavaScriptSerializer();
+            JavaScriptSerializer ser = CreateSerializer();
             Dictionary<string, object> root = ser.Deserialize<Dictionary<string, object>>(json);
             if (root == null || !root.ContainsKey("candidates"))
             {
