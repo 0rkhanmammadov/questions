@@ -75,50 +75,84 @@ namespace QuizAssistant
             return ans;
         }
 
+        private static string NormalizeIeltsToken(string val)
+        {
+            if (string.IsNullOrEmpty(val)) return "";
+            string s = val.Trim();
+            string lower = s.ToLowerInvariant();
+            if (lower == "true" || lower == "t") return "TRUE";
+            if (lower == "false" || lower == "f") return "FALSE";
+            if (lower == "not given" || lower == "notgiven" || lower == "ng") return "NOT GIVEN";
+            if (lower == "yes" || lower == "y") return "YES";
+            if (lower == "no" || lower == "n") return "NO";
+            return s;
+        }
+
         public static string CleanAnswer(string raw)
         {
             if (string.IsNullOrEmpty(raw)) return "";
             string text = raw.Trim();
 
-            // Match "Cavab: B) ..." or "Doğru cavab: B) ..."
-            Match m = Regex.Match(text, @"(?:Cavab|Doğru\s+cavab|Correct\s+answer)\s*[:\-]?\s*(.+?)$", RegexOptions.IgnoreCase | RegexOptions.Multiline);
+            // Match "Cavab: B) ..." or "Doğru cavab: B) ..." or "Answer: ..."
+            Match m = Regex.Match(text, @"^(?:Cavab|Doğru\s+cavab|Correct\s+answer|Answer)\s*[:\-]?\s*(.+?)$", RegexOptions.IgnoreCase | RegexOptions.Multiline);
             if (m.Success)
             {
                 text = m.Groups[1].Value.Trim();
             }
 
-            // Remove markdown asterisks
-            text = text.Replace("**", "").Replace("*", "").Trim();
+            // Remove markdown formatting
+            text = text.Replace("**", "").Replace("*", "").Replace("`", "").Trim();
 
-            // Clean lines
-            string[] lines = text.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            if (lines.Length > 0)
+            string[] rawLines = text.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            List<string> validLines = new List<string>();
+
+            foreach (string rawLine in rawLines)
             {
-                text = string.Join(" ", lines).Trim();
+                string line = rawLine.Trim();
+                if (string.IsNullOrEmpty(line)) continue;
+
+                // Skip conversational / intro headers
+                if (Regex.IsMatch(line, @"^(?:Here\s+(?:are|is)|Answers?|Based\s+on|Sure|According\s+to)\b", RegexOptions.IgnoreCase))
+                    continue;
+
+                // Check for question numbering e.g. "1. TRUE", "1) library", "Q1: B", "Question 1: FALSE"
+                Match qm = Regex.Match(line, @"^(?:(?:Q|Question)\s*)?(\d{1,2})\s*[\.\)\:\-]\s*(.+)$", RegexOptions.IgnoreCase);
+                if (qm.Success)
+                {
+                    string qNum = qm.Groups[1].Value;
+                    string qAns = qm.Groups[2].Value.Trim();
+                    qAns = NormalizeIeltsToken(qAns);
+                    validLines.Add(string.Format("{0}. {1}", qNum, qAns));
+                }
+                else
+                {
+                    // Line without leading number
+                    string norm = NormalizeIeltsToken(line);
+                    validLines.Add(norm);
+                }
             }
 
-            // Multi-select numbers check FIRST: "1, 3, 4" or "1, 2 və 5" or "1-4-5" -> "1-3-4"
-            if (Regex.IsMatch(text, @"^\s*\d{1,2}(?:\s*[,;\-\s]\s*(?:və\s*)?\d{1,2})+\s*$", RegexOptions.IgnoreCase))
+            if (validLines.Count == 0) return text;
+
+            // If only 1 line, check multi-select digits or clean up option letters if needed
+            if (validLines.Count == 1)
             {
-                MatchCollection mc = Regex.Matches(text, @"\b\d{1,2}\b");
-                List<string> digits = new List<string>();
-                foreach (Match dm in mc)
+                string single = validLines[0];
+
+                // Multi-select numbers check e.g. "1, 3, 4" -> "1-3-4"
+                if (Regex.IsMatch(single, @"^\s*\d{1,2}(?:\s*[,;\-\s]\s*(?:və|and)?\s*\d{1,2})+\s*$", RegexOptions.IgnoreCase))
                 {
-                    digits.Add(dm.Value);
+                    MatchCollection mc = Regex.Matches(single, @"\b\d{1,2}\b");
+                    List<string> digits = new List<string>();
+                    foreach (Match dm in mc) { digits.Add(dm.Value); }
+                    if (digits.Count >= 2) return string.Join("-", digits.ToArray());
                 }
-                if (digits.Count >= 2)
-                {
-                    return string.Join("-", digits.ToArray());
-                }
+
+                return single;
             }
 
-            // Strip leading question numbers e.g. "14) ", "14. "
-            text = Regex.Replace(text, @"^\d{1,3}\s*[\.\)\:]\s*", "").Trim();
-
-            // Strip leading option letters e.g. "A) ", "B. ", "C: ", "d - "
-            text = Regex.Replace(text, @"^[A-Za-z\u0400-\u04FF]\s*[\.\)\-:]\s*", "").Trim();
-
-            return text;
+            // If multiple lines, return them joined by newline for clear multi-line display
+            return string.Join(Environment.NewLine, validLines.ToArray());
         }
 
         public static string SolveText(string questionText, AppConfig config)
@@ -144,11 +178,13 @@ namespace QuizAssistant
             string host = "generativelanguage.googleapis.com";
 
             string strictUser = string.Format(
-                "Sual:\n{0}\n\nQAYDALAR:\n" +
-                "1. Təkseçimlidirsə: QƏTİYYƏN variant hərfi (A, B, C...) yazma, yalnız variantdakı sözü/mətni yaz (məsələn: 'Bakı').\n" +
-                "2. Çoxseçimlidirsə (məsələn 1, 2, 3, 4, 5 bəndlərindən bir neçəsi doğrudursa): Yalnız doğru rəqəmləri tire ilə birləşdirərək yaz (məsələn: '1-3-4' və ya '1-2-5'). Heç bir söz və hərf əlavə etmə!\n" +
-                "3. Uyğunluqdursa: '1-a, 2-c, 3-b' kimi yaz.\n" +
-                "4. Qətiyyən izahat, şərh yazma. Yalnız birbaşa cavabı ver.",
+                "IELTS QUESTION:\n{0}\n\nRULES:\n" +
+                "1. True/False/Not Given: Strictly TRUE, FALSE, or NOT GIVEN.\n" +
+                "2. Yes/No/Not Given: Strictly YES, NO, or NOT GIVEN.\n" +
+                "3. Sentence/Note Completion: Obey word limit (e.g. ONE WORD ONLY). Copy verbatim words only.\n" +
+                "4. Multiple Choice: Output option letter (e.g. B or A, C).\n" +
+                "5. If multiple questions, list each on a separate line (e.g. 1. TRUE\\n2. library).\n" +
+                "6. No explanations. Direct answers only.",
                 cleaned
             );
 
@@ -196,12 +232,15 @@ namespace QuizAssistant
             string imgMime = (imageBytes != null && imageBytes.Length > 2 && imageBytes[0] == 0xFF && imageBytes[1] == 0xD8) ? "image/jpeg" : "image/png";
 
             string userInstruction =
-                "Sən beynəlxalq imtahan ekspertisən. Qulaqlıqdan gələn audionu dinlə və ekrandakı sualları oxu.\n" +
-                "QAYDALAR:\n" +
-                "1. Ekranda boşluq doldurmadırsa (Fill in the blanks): Audioda deyilən dəqiq sözü/rəqəmi yaz (məsələn: 'library' və ya '9:30 AM').\n" +
-                "2. Testdirsə: Yalnız doğru variantdakı mətni və ya hərfi yaz.\n" +
-                "3. Birdən çox sual varsa, nömrələrlə qısa yaz (məsələn: '1) library  2) Tuesday  3) B').\n" +
-                "4. Qətiyyən əlavə izahat, şərh yazma. Yalnız cavabları ver!";
+                "IELTS LISTENING & READING TASK:\n" +
+                "Listen to the audio and inspect the questions on the screen image.\n" +
+                "RULES:\n" +
+                "1. True/False/Not Given: Output strictly TRUE, FALSE, or NOT GIVEN.\n" +
+                "2. Yes/No/Not Given: Output strictly YES, NO, or NOT GIVEN.\n" +
+                "3. Fill-in-the-blanks / Completion: Strictly obey word count (e.g. ONE WORD AND/OR A NUMBER). Extract exact spoken word verbatim. Do not add extra articles.\n" +
+                "4. Multiple Choice: Output the option letter (e.g. A, B, C or A, D).\n" +
+                "5. If multiple questions are visible, list each on a separate line (e.g. 1. library\\n2. 9:30 AM\\n3. TRUE).\n" +
+                "6. Output ONLY direct answers. Zero explanations, no conversational filler.";
 
             var partsList = new List<object>();
             partsList.Add(new Dictionary<string, object> { { "text", userInstruction } });
@@ -271,12 +310,16 @@ namespace QuizAssistant
             string imgMime = (imageBytes != null && imageBytes.Length > 2 && imageBytes[0] == 0xFF && imageBytes[1] == 0xD8) ? "image/jpeg" : "image/png";
 
             string userInstruction =
-                "Sən imtahan ekspertisən. Şəkildəki sualı və variantları diqqətlə oxu, ən doğru cavabı tap.\n" +
-                "QAYDALAR:\n" +
-                "1. Təkseçimlidirsə: QƏTİYYƏN variant hərfi (A, B, C...) yazma, yalnız variantdakı sözü/mətni yaz (məsələn: 'Bakı').\n" +
-                "2. Çoxseçimlidirsə (bir neçə bənd seçilməlidirsə): Yalnız doğru rəqəmləri tire ilə birləşdirərək yaz (məsələn: '1-3-4' və ya '1-2-5'). Heç bir söz və hərf əlavə etmə!\n" +
-                "3. Uyğunluq sualıdırsa: '1-a, 2-c, 3-b' kimi yaz.\n" +
-                "4. Qətiyyən əlavə izahat və ya nəzəri şərh yazma. Yalnız cavabı ver!";
+                "IELTS READING TASK:\n" +
+                "Read the passage/questions on the screen image carefully and provide the exact answers.\n" +
+                "RULES:\n" +
+                "1. True/False/Not Given: Output strictly TRUE, FALSE, or NOT GIVEN.\n" +
+                "2. Yes/No/Not Given: Output strictly YES, NO, or NOT GIVEN.\n" +
+                "3. Sentence/Summary Completion: Strictly obey word count (e.g. ONE WORD ONLY). Copy verbatim from passage. No extra articles.\n" +
+                "4. Multiple Choice: Output option letter (e.g. A, B, C or B, D).\n" +
+                "5. Matching Headings / Info: Output roman numerals or letters (e.g. iv or C).\n" +
+                "6. If multiple questions are visible, list each on a separate line (e.g. 1. TRUE\\n2. NOT GIVEN\\n3. FALSE).\n" +
+                "7. Output ONLY direct answers. Zero explanations, no conversational filler.";
 
             var payloadObj = new Dictionary<string, object>
             {
