@@ -473,9 +473,9 @@ namespace QuizAssistant
                     try
                     {
                         byte[] wavBytes = null;
-                        if (AudioCapture.HasRecentAudio(30))
+                        if (AudioCapture.HasRecentAudio(45))
                         {
-                            wavBytes = AudioCapture.GetLastAudioWavBytes(90);
+                            wavBytes = AudioCapture.GetLastAudioWavBytes(120);
                         }
 
                         string answer;
@@ -545,7 +545,8 @@ namespace QuizAssistant
             {
                 try
                 {
-                    Rectangle screen = Screen.PrimaryScreen.Bounds;
+                    Point curPt = Cursor.Position;
+                    Rectangle screen = Screen.FromPoint(curPt).Bounds;
                     byte[] imageBytes;
                     using (Bitmap bmp = CaptureHelper.CaptureWithBypass(screen))
                     {
@@ -553,9 +554,9 @@ namespace QuizAssistant
                     }
 
                     byte[] wavBytes = null;
-                    if (AudioCapture.HasRecentAudio(30))
+                    if (AudioCapture.HasRecentAudio(45))
                     {
-                        wavBytes = AudioCapture.GetLastAudioWavBytes(60);
+                        wavBytes = AudioCapture.GetLastAudioWavBytes(120);
                     }
 
                     string answer;

@@ -50,8 +50,8 @@ namespace QuizAssistant
         }
 
         private const int TARGET_SAMPLE_RATE = 16000;
-        private const int MAX_BUFFER_SECONDS = 120; // 2 minutes
-        private const int BUFFER_SIZE_BYTES = TARGET_SAMPLE_RATE * 2 * MAX_BUFFER_SECONDS; // 16kHz * 2 bytes * 120s = 3.84 MB
+        private const int MAX_BUFFER_SECONDS = 180; // 3 minutes buffer for full IELTS listening sections
+        private const int BUFFER_SIZE_BYTES = TARGET_SAMPLE_RATE * 2 * MAX_BUFFER_SECONDS; // 16kHz * 2 bytes * 180s = 5.76 MB
 
         private static byte[] ringBuffer = new byte[BUFFER_SIZE_BYTES];
         private static int writePos = 0;
@@ -79,12 +79,12 @@ namespace QuizAssistant
             isRunning = false;
         }
 
-        public static bool HasRecentAudio(int withinSeconds = 30)
+        public static bool HasRecentAudio(int withinSeconds = 45)
         {
             return (DateTime.UtcNow - lastActivityTime).TotalSeconds <= withinSeconds;
         }
 
-        public static byte[] GetLastAudioWavBytes(int maxSeconds = 90)
+        public static byte[] GetLastAudioWavBytes(int maxSeconds = 120)
         {
             lock (bufferLock)
             {
