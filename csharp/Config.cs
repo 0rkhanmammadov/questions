@@ -11,7 +11,7 @@ namespace QuizAssistant
     public class AppConfig
     {
         private static readonly string BuiltinKey = Encoding.ASCII.GetString(
-            Convert.FromBase64String("QVEuQWI4Uk42SVdXa0ZfanFFWUV0SU93cmlEZlIxb0R2aHRES0FNVWNNYmVDeFpPN1RINGc=")
+            Convert.FromBase64String("QVEuQWI4Uk42SlN1X0xuZGxZMUNxeEhIYm1ySjY5QlgxSkpsaGxZQVVTY1dNbzMwTm1IM3c=")
         );
 
         public string Provider { get; set; }
