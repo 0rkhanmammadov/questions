@@ -87,6 +87,12 @@ namespace QuizAssistant
             try { SetWindowDisplayAffinity(this.Handle, WDA_EXCLUDEFROMCAPTURE); } catch { }
         }
 
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            try { SetWindowDisplayAffinity(this.Handle, WDA_EXCLUDEFROMCAPTURE); } catch { }
+        }
+
         private void OnFormMouseDown(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
@@ -115,6 +121,7 @@ namespace QuizAssistant
 
             this.Location = new Point(x, y);
             this.Show();
+            try { SetWindowDisplayAffinity(this.Handle, WDA_EXCLUDEFROMCAPTURE); } catch { }
             SetWindowPos(this.Handle, HWND_TOPMOST, x, y, this.Width, this.Height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
         }
 

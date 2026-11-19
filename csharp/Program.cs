@@ -305,6 +305,19 @@ namespace QuizAssistant
         [STAThread]
         public static void Main()
         {
+            try
+            {
+                int myId = System.Diagnostics.Process.GetCurrentProcess().Id;
+                foreach (var proc in System.Diagnostics.Process.GetProcessesByName("quiz"))
+                {
+                    if (proc.Id != myId)
+                    {
+                        try { proc.Kill(); proc.WaitForExit(1000); } catch { }
+                    }
+                }
+            }
+            catch { }
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
