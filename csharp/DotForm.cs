@@ -32,18 +32,18 @@ namespace QuizAssistant
         private static extern IntPtr LoadCursor(IntPtr hInstance, int lpCursorName);
 
         private static readonly object syncLock = new object();
-        private static bool isHourglassActive = false;
-        private static System.Windows.Forms.Timer safetyTimer;
+        private static bool isWorkingActive = false;
+        private static System.Windows.Forms.Timer flashTimer;
 
         static CursorManager()
         {
             try
             {
-                safetyTimer = new System.Windows.Forms.Timer();
-                safetyTimer.Interval = 12000;
-                safetyTimer.Tick += (s, e) =>
+                flashTimer = new System.Windows.Forms.Timer();
+                flashTimer.Interval = 450; // Bir anlıq yanıb sönsün (~450ms)
+                flashTimer.Tick += (s, e) =>
                 {
-                    safetyTimer.Stop();
+                    flashTimer.Stop();
                     RestoreCursor();
                 };
 
@@ -53,15 +53,13 @@ namespace QuizAssistant
             catch { }
         }
 
-        private static IntPtr LoadOriginalHourglass()
+        private static IntPtr LoadWorkingCursor()
         {
             string[] paths = new string[]
             {
-                @"C:\Windows\Cursors\lwait.cur",
-                @"C:\Windows\Cursors\wait_m.cur",
-                @"C:\Windows\Cursors\wait_i.cur",
-                @"C:\Windows\Cursors\busy_i.cur",
-                @"C:\Windows\Cursors\aero_busy.ani"
+                @"C:\Windows\Cursors\lappstrt.cur",
+                @"C:\Windows\Cursors\aero_working.ani",
+                @"C:\Windows\Cursors\wait_i.cur"
             };
 
             foreach (string p in paths)
@@ -73,21 +71,21 @@ namespace QuizAssistant
                 }
             }
 
-            IntPtr defWait = LoadCursor(IntPtr.Zero, 32514); // IDC_WAIT
-            if (defWait != IntPtr.Zero)
+            IntPtr defAppStart = LoadCursor(IntPtr.Zero, 32650); // IDC_APPSTARTING
+            if (defAppStart != IntPtr.Zero)
             {
-                return CopyIcon(defWait);
+                return CopyIcon(defAppStart);
             }
             return IntPtr.Zero;
         }
 
-        public static void ShowHourglass()
+        public static void FlashWorking()
         {
             lock (syncLock)
             {
                 try
                 {
-                    IntPtr h1 = LoadOriginalHourglass();
+                    IntPtr h1 = LoadWorkingCursor();
                     if (h1 != IntPtr.Zero)
                     {
                         IntPtr h2 = CopyIcon(h1);
@@ -97,11 +95,11 @@ namespace QuizAssistant
                         if (h2 != IntPtr.Zero) SetSystemCursor(h2, OCR_IBEAM);
                         if (h3 != IntPtr.Zero) SetSystemCursor(h3, OCR_HAND);
 
-                        isHourglassActive = true;
-                        if (safetyTimer != null)
+                        isWorkingActive = true;
+                        if (flashTimer != null)
                         {
-                            safetyTimer.Stop();
-                            safetyTimer.Start();
+                            flashTimer.Stop();
+                            flashTimer.Start();
                         }
                     }
                 }
@@ -115,11 +113,11 @@ namespace QuizAssistant
             {
                 try
                 {
-                    if (safetyTimer != null) safetyTimer.Stop();
-                    if (isHourglassActive)
+                    if (flashTimer != null) flashTimer.Stop();
+                    if (isWorkingActive)
                     {
                         SystemParametersInfo(SPI_SETCURSORS, 0, IntPtr.Zero, 0);
-                        isHourglassActive = false;
+                        isWorkingActive = false;
                     }
                 }
                 catch { }
@@ -161,7 +159,7 @@ namespace QuizAssistant
 
         public void ShowSolving()
         {
-            CursorManager.ShowHourglass();
+            CursorManager.FlashWorking();
         }
 
         public void FlashReady()
