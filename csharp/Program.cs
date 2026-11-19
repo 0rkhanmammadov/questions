@@ -545,10 +545,9 @@ namespace QuizAssistant
             {
                 try
                 {
-                    Point curPt = Cursor.Position;
-                    Rectangle screen = Screen.FromPoint(curPt).Bounds;
+                    Rectangle captureArea = CaptureHelper.GetActiveWindowOrScreenRect();
                     byte[] imageBytes;
-                    using (Bitmap bmp = CaptureHelper.CaptureWithBypass(screen))
+                    using (Bitmap bmp = CaptureHelper.CaptureWithBypass(captureArea))
                     {
                         imageBytes = CaptureHelper.EncodeToJpeg(bmp, 85L);
                     }

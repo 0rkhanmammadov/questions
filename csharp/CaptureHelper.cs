@@ -30,6 +30,44 @@ namespace QuizAssistant
             public int Left, Top, Right, Bottom;
         }
 
+        [DllImport("user32.dll")]
+        public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        public static Rectangle GetActiveWindowOrScreenRect()
+        {
+            Point curPt = Cursor.Position;
+            Rectangle curScreen = Screen.FromPoint(curPt).Bounds;
+
+            IntPtr fgWnd = GetForegroundWindow();
+            if (fgWnd != IntPtr.Zero)
+            {
+                uint fgPid;
+                GetWindowThreadProcessId(fgWnd, out fgPid);
+                uint myPid = (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
+
+                if (fgPid != myPid)
+                {
+                    RECT r;
+                    if (GetWindowRect(fgWnd, out r))
+                    {
+                        int w = r.Right - r.Left;
+                        int h = r.Bottom - r.Top;
+                        if (w >= 300 && h >= 200)
+                        {
+                            Rectangle winRect = new Rectangle(r.Left, r.Top, w, h);
+                            Rectangle inter = Rectangle.Intersect(curScreen, winRect);
+                            if (inter.Width >= 300 && inter.Height >= 200)
+                            {
+                                return inter;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return curScreen;
+        }
+
         public const uint WDA_NONE = 0x00000000;
         public const uint PW_RENDERFULLCONTENT = 0x00000002;
 
