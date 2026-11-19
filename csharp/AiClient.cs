@@ -37,6 +37,8 @@ namespace QuizAssistant
             return true;
         }
 
+        private const string FallbackModel = "gemini-3.5-flash-lite";
+
         public static string FormatWithDots(string ans, string dotMode)
         {
             if (string.IsNullOrEmpty(ans)) return "";
@@ -121,11 +123,7 @@ namespace QuizAssistant
             string apiKey = (config.GeminiApiKey ?? "").Trim();
             if (string.IsNullOrEmpty(apiKey)) throw new Exception("API açarı yoxdur (Ctrl+Shift+S)");
 
-            string model = string.IsNullOrEmpty(config.GeminiModel) ? "gemini-3.5-flash-lite" : config.GeminiModel;
             string host = "generativelanguage.googleapis.com";
-            string ip = DohResolver.Resolve(host);
-
-            string url = string.Format("https://{0}/v1beta/models/{1}:generateContent?key={2}", ip, model, apiKey);
 
             string strictUser = string.Format(
                 "Sual:\n{0}\n\nQAYDALAR:\n" +
@@ -165,7 +163,7 @@ namespace QuizAssistant
             JavaScriptSerializer ser = new JavaScriptSerializer();
             string jsonBody = ser.Serialize(payloadObj);
 
-            string responseJson = PostJson(url, host, apiKey, jsonBody);
+            string responseJson = CallGeminiWithFallback(host, config.GeminiModel, apiKey, jsonBody);
             string rawAnswer = ExtractGeminiAnswer(responseJson);
             string cleanedAnswer = CleanAnswer(rawAnswer);
             return FormatWithDots(cleanedAnswer, config.DotMode);
@@ -178,11 +176,7 @@ namespace QuizAssistant
             string apiKey = (config.GeminiApiKey ?? "").Trim();
             if (string.IsNullOrEmpty(apiKey)) throw new Exception("API açarı yoxdur (Ctrl+Shift+S)");
 
-            string model = string.IsNullOrEmpty(config.GeminiModel) ? "gemini-3.5-flash-lite" : config.GeminiModel;
             string host = "generativelanguage.googleapis.com";
-            string ip = DohResolver.Resolve(host);
-
-            string url = string.Format("https://{0}/v1beta/models/{1}:generateContent?key={2}", ip, model, apiKey);
             string b64Img = Convert.ToBase64String(imageBytes);
 
             string userInstruction =
@@ -237,10 +231,31 @@ namespace QuizAssistant
             JavaScriptSerializer ser = new JavaScriptSerializer();
             string jsonBody = ser.Serialize(payloadObj);
 
-            string responseJson = PostJson(url, host, apiKey, jsonBody);
+            string responseJson = CallGeminiWithFallback(host, config.GeminiModel, apiKey, jsonBody);
             string rawAnswer = ExtractGeminiAnswer(responseJson);
             string cleanedAnswer = CleanAnswer(rawAnswer);
             return FormatWithDots(cleanedAnswer, config.DotMode);
+        }
+
+        private static string CallGeminiWithFallback(string host, string primaryModel, string apiKey, string jsonBody)
+        {
+            string chosen = string.IsNullOrEmpty(primaryModel) ? FallbackModel : primaryModel.Trim();
+            string ip = DohResolver.Resolve(host);
+            string primaryUrl = string.Format("https://{0}/v1beta/models/{1}:generateContent?key={2}", ip, chosen, apiKey);
+
+            try
+            {
+                return PostJson(primaryUrl, host, apiKey, jsonBody);
+            }
+            catch (Exception)
+            {
+                if (!string.Equals(chosen, FallbackModel, StringComparison.OrdinalIgnoreCase))
+                {
+                    string fallbackUrl = string.Format("https://{0}/v1beta/models/{1}:generateContent?key={2}", ip, FallbackModel, apiKey);
+                    return PostJson(fallbackUrl, host, apiKey, jsonBody);
+                }
+                throw;
+            }
         }
 
         private static string PostJson(string url, string host, string apiKey, string jsonBody)
@@ -250,8 +265,8 @@ namespace QuizAssistant
             req.ContentType = "application/json; charset=utf-8";
             req.Host = host;
             req.Headers["x-goog-api-key"] = apiKey;
-            req.Timeout = 12000;
-            req.ReadWriteTimeout = 12000;
+            req.Timeout = 15000;
+            req.ReadWriteTimeout = 15000;
 
             byte[] bytes = Encoding.UTF8.GetBytes(jsonBody);
             req.ContentLength = bytes.Length;
