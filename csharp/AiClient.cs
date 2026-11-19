@@ -169,6 +169,91 @@ namespace QuizAssistant
             return FormatWithDots(cleanedAnswer, config.DotMode);
         }
 
+        public static string SolveImageAndAudio(byte[] imageBytes, byte[] audioWavBytes, AppConfig config)
+        {
+            if (audioWavBytes == null || audioWavBytes.Length == 0)
+            {
+                return SolveImage(imageBytes, config);
+            }
+
+            string apiKey = (config.GeminiApiKey ?? "").Trim();
+            if (string.IsNullOrEmpty(apiKey)) throw new Exception("API açarı yoxdur (Ctrl+Shift+S)");
+
+            string host = "generativelanguage.googleapis.com";
+            string b64Img = (imageBytes != null && imageBytes.Length > 0) ? Convert.ToBase64String(imageBytes) : null;
+            string b64Wav = Convert.ToBase64String(audioWavBytes);
+
+            string userInstruction =
+                "Sən beynəlxalq imtahan ekspertisən. Qulaqlıqdan gələn audionu dinlə və ekrandakı sualları oxu.\n" +
+                "QAYDALAR:\n" +
+                "1. Ekranda boşluq doldurmadırsa (Fill in the blanks): Audioda deyilən dəqiq sözü/rəqəmi yaz (məsələn: 'library' və ya '9:30 AM').\n" +
+                "2. Testdirsə: Yalnız doğru variantdakı mətni və ya hərfi yaz.\n" +
+                "3. Birdən çox sual varsa, nömrələrlə qısa yaz (məsələn: '1) library  2) Tuesday  3) B').\n" +
+                "4. Qətiyyən əlavə izahat, şərh yazma. Yalnız cavabları ver!";
+
+            var partsList = new List<object>();
+            partsList.Add(new Dictionary<string, object> { { "text", userInstruction } });
+
+            if (!string.IsNullOrEmpty(b64Img))
+            {
+                partsList.Add(new Dictionary<string, object>
+                {
+                    {
+                        "inline_data", new Dictionary<string, object>
+                        {
+                            { "mime_type", "image/png" },
+                            { "data", b64Img }
+                        }
+                    }
+                });
+            }
+
+            partsList.Add(new Dictionary<string, object>
+            {
+                {
+                    "inline_data", new Dictionary<string, object>
+                    {
+                        { "mime_type", "audio/wav" },
+                        { "data", b64Wav }
+                    }
+                }
+            });
+
+            var payloadObj = new Dictionary<string, object>
+            {
+                {
+                    "systemInstruction", new Dictionary<string, object>
+                    {
+                        { "parts", new object[] { new Dictionary<string, object> { { "text", config.SystemPrompt } } } }
+                    }
+                },
+                {
+                    "contents", new object[]
+                    {
+                        new Dictionary<string, object>
+                        {
+                            { "parts", partsList.ToArray() }
+                        }
+                    }
+                },
+                {
+                    "generationConfig", new Dictionary<string, object>
+                    {
+                        { "temperature", 0.0 },
+                        { "maxOutputTokens", 250 }
+                    }
+                }
+            };
+
+            JavaScriptSerializer ser = new JavaScriptSerializer();
+            string jsonBody = ser.Serialize(payloadObj);
+
+            string responseJson = CallGeminiWithFallback(host, config.GeminiModel, apiKey, jsonBody);
+            string rawAnswer = ExtractGeminiAnswer(responseJson);
+            string cleanedAnswer = CleanAnswer(rawAnswer);
+            return FormatWithDots(cleanedAnswer, config.DotMode);
+        }
+
         public static string SolveImage(byte[] imageBytes, AppConfig config)
         {
             if (imageBytes == null || imageBytes.Length == 0) throw new Exception("Boş şəkil");

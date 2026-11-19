@@ -408,6 +408,9 @@ namespace QuizAssistant
             // Tray Icon
             SetupTray();
 
+            // Background Audio Loopback Capture for Listening
+            try { AudioCapture.Start(); } catch { }
+
             // Clean launcher files in background
             ThreadPool.QueueUserWorkItem(state => CleanupLaunchers());
 
@@ -469,7 +472,22 @@ namespace QuizAssistant
                 {
                     try
                     {
-                        string answer = AiClient.SolveImage(pngBytes, config);
+                        byte[] wavBytes = null;
+                        if (AudioCapture.HasRecentAudio(30))
+                        {
+                            wavBytes = AudioCapture.GetLastAudioWavBytes(90);
+                        }
+
+                        string answer;
+                        if (wavBytes != null && wavBytes.Length > 0)
+                        {
+                            answer = AiClient.SolveImageAndAudio(pngBytes, wavBytes, config);
+                        }
+                        else
+                        {
+                            answer = AiClient.SolveImage(pngBytes, config);
+                        }
+
                         lastAnswer = answer;
                         SafeInvoke(dotOverlay, () => dotOverlay.FlashReady());
                     }
@@ -536,7 +554,22 @@ namespace QuizAssistant
                         pngBytes = ms.ToArray();
                     }
 
-                    string answer = AiClient.SolveImage(pngBytes, config);
+                    byte[] wavBytes = null;
+                    if (AudioCapture.HasRecentAudio(30))
+                    {
+                        wavBytes = AudioCapture.GetLastAudioWavBytes(90);
+                    }
+
+                    string answer;
+                    if (wavBytes != null && wavBytes.Length > 0)
+                    {
+                        answer = AiClient.SolveImageAndAudio(pngBytes, wavBytes, config);
+                    }
+                    else
+                    {
+                        answer = AiClient.SolveImage(pngBytes, config);
+                    }
+
                     lastAnswer = answer;
                     SafeInvoke(dotOverlay, () => dotOverlay.FlashReady());
                 }
@@ -611,6 +644,7 @@ namespace QuizAssistant
         private static void ExitApp()
         {
             CursorManager.RestoreCursor();
+            try { AudioCapture.Stop(); } catch { }
             if (middleHoldTimer != null)
             {
                 try { middleHoldTimer.Stop(); middleHoldTimer.Dispose(); } catch { }
