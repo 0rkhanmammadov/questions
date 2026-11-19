@@ -46,6 +46,17 @@ namespace QuizAssistant
             return ser;
         }
 
+        private static object[] GetSafetySettings()
+        {
+            return new object[]
+            {
+                new Dictionary<string, object> { { "category", "HARM_CATEGORY_HARASSMENT" }, { "threshold", "BLOCK_NONE" } },
+                new Dictionary<string, object> { { "category", "HARM_CATEGORY_HATE_SPEECH" }, { "threshold", "BLOCK_NONE" } },
+                new Dictionary<string, object> { { "category", "HARM_CATEGORY_SEXUALLY_EXPLICIT" }, { "threshold", "BLOCK_NONE" } },
+                new Dictionary<string, object> { { "category", "HARM_CATEGORY_DANGEROUS_CONTENT" }, { "threshold", "BLOCK_NONE" } }
+            };
+        }
+
         public static string FormatWithDots(string ans, string dotMode)
         {
             if (string.IsNullOrEmpty(ans)) return "";
@@ -162,8 +173,11 @@ namespace QuizAssistant
                     "generationConfig", new Dictionary<string, object>
                     {
                         { "temperature", 0.0 },
-                        { "maxOutputTokens", 200 }
+                        { "maxOutputTokens", 1000 }
                     }
+                },
+                {
+                    "safetySettings", GetSafetySettings()
                 }
             };
 
@@ -248,8 +262,11 @@ namespace QuizAssistant
                     "generationConfig", new Dictionary<string, object>
                     {
                         { "temperature", 0.0 },
-                        { "maxOutputTokens", 250 }
+                        { "maxOutputTokens", 1000 }
                     }
+                },
+                {
+                    "safetySettings", GetSafetySettings()
                 }
             };
 
@@ -317,8 +334,11 @@ namespace QuizAssistant
                     "generationConfig", new Dictionary<string, object>
                     {
                         { "temperature", 0.0 },
-                        { "maxOutputTokens", 200 }
+                        { "maxOutputTokens", 1000 }
                     }
+                },
+                {
+                    "safetySettings", GetSafetySettings()
                 }
             };
 
@@ -396,7 +416,21 @@ namespace QuizAssistant
         {
             JavaScriptSerializer ser = CreateSerializer();
             Dictionary<string, object> root = ser.Deserialize<Dictionary<string, object>>(json);
-            if (root == null || !root.ContainsKey("candidates"))
+            if (root == null)
+            {
+                throw new Exception("Gemini cavab qaytarmadı (JSON boşdur)");
+            }
+
+            if (root.ContainsKey("promptFeedback"))
+            {
+                Dictionary<string, object> pf = root["promptFeedback"] as Dictionary<string, object>;
+                if (pf != null && pf.ContainsKey("blockReason"))
+                {
+                    throw new Exception("Gemini sualı blokladı: " + pf["blockReason"].ToString());
+                }
+            }
+
+            if (!root.ContainsKey("candidates"))
             {
                 throw new Exception("Gemini cavab qaytarmadı");
             }
@@ -414,8 +448,17 @@ namespace QuizAssistant
                 break;
             }
 
-            if (firstCand == null || !firstCand.ContainsKey("content"))
+            if (firstCand == null)
             {
+                throw new Exception("Cavab namizədi boşdur");
+            }
+
+            if (!firstCand.ContainsKey("content"))
+            {
+                if (firstCand.ContainsKey("finishReason"))
+                {
+                    throw new Exception("Gemini bitmə səbəbi: " + firstCand["finishReason"].ToString());
+                }
                 throw new Exception("Məzmun boşdur");
             }
 
@@ -444,6 +487,10 @@ namespace QuizAssistant
             string result = sb.ToString().Trim();
             if (string.IsNullOrEmpty(result))
             {
+                if (firstCand.ContainsKey("finishReason"))
+                {
+                    throw new Exception("Gemini cavabı: " + firstCand["finishReason"].ToString());
+                }
                 throw new Exception("Gemini boş cavab verdi");
             }
             return result;
